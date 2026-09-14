@@ -1,0 +1,61 @@
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: agrisense_db
+      MYSQL_USER: agrisense
+      MYSQL_PASSWORD: agrisense
+      MYSQL_ROOT_PASSWORD: Annoor-akyash.15
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pAnnoor-akyash.15"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ../
+      dockerfile: infra/Dockerfile.api
+    restart: unless-stopped
+    env_file:
+      - ../apps/api/.env
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      INFERENCE_SERVICE_URL: http://inference:8001
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    command: >
+      sh -c "alembic -c apps/api/alembic.ini upgrade head &&
+             python -m apps.api.db.seed &&
+             uvicorn apps.api.main:app --host 0.0.0.0 --port 8000"
+
+  inference:
+    build:
+      context: ../
+      dockerfile: infra/Dockerfile.inference
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    command: uvicorn apps.inference.main:app --host 0.0.0.0 --port 8001
+
+  web:
+    build:
+      context: ../apps/web
+      dockerfile: ../../infra/Dockerfile.web
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+
+volumes:
+  mysql_data:

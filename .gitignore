@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+node_modules/
+.next/
+out/
+.env
+.env.local
+# apps/inference/weights/*.onnx
+# apps/inference/weights/*.json
+.DS_Store
+*.log
+-e 
+apps/api/uploads/
+!apps/api/uploads/.gitkeep
