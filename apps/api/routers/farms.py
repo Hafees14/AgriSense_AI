@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from apps.api.core.deps import get_current_user
@@ -6,6 +6,7 @@ from apps.api.db.session import get_db
 from apps.api.models.farm import Farm, Field
 from apps.api.models.user import User
 from apps.api.schemas.farm import FarmCreate, FarmOut, FarmUpdate, FieldCreate, FieldOut
+from apps.api.services import storage_service
 
 router = APIRouter(prefix="/farms", tags=["farms"])
 
@@ -43,6 +44,21 @@ def update_farm(
     farm = _get_owned_farm(db, farm_id, user)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(farm, field, value)
+    db.commit()
+    db.refresh(farm)
+    return farm
+
+
+@router.post("/{farm_id}/image", response_model=FarmOut)
+async def upload_farm_image(
+    farm_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    farm = _get_owned_farm(db, farm_id, user)
+    contents = await storage_service.validate_image(file)
+    farm.image_url = storage_service.upload_farm_image(contents, file.content_type, user.id, farm.id)
     db.commit()
     db.refresh(farm)
     return farm

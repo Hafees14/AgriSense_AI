@@ -16,8 +16,22 @@ class Farm(Base, UUIDPKMixin, TimestampMixin):
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     latitude: Mapped[float | None] = mapped_column(Numeric(9, 6), nullable=True)
     longitude: Mapped[float | None] = mapped_column(Numeric(9, 6), nullable=True)
+    # How `latitude`/`longitude` were obtained — lets the UI tell a farmer
+    # "this is your GPS position" apart from "this is our best guess from
+    # the address you typed" instead of presenting both as equally exact.
+    location_source: Mapped[str | None] = mapped_column(
+        Enum("manual", "gps", "geocoded", name="farm_location_source"), nullable=True
+    )
+    address: Mapped[str | None] = mapped_column(String(255), nullable=True)
     land_size_ha: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
     region: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    farm_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # Simple comma-separated free text rather than a separate crops table —
+    # there's no existing crop-per-farm relation to extend, and this is
+    # farmer-entered descriptive text, not the taxonomy `plants` already
+    # models for diagnosis matching.
+    main_crops: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="farms")
     fields: Mapped[list["Field"]] = relationship(back_populates="farm", cascade="all, delete-orphan")

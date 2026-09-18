@@ -47,6 +47,17 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == payload.email).first():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
+    if payload.role in ("officer", "researcher"):
+        # Gate elevated-role signup behind a shared code rather than leaving
+        # it open — these roles can review other farmers' diagnoses (see
+        # require_role() in core/deps.py). No code configured means this
+        # path is closed entirely, not silently allowed.
+        if not settings.OFFICER_SIGNUP_CODE or payload.officer_code != settings.OFFICER_SIGNUP_CODE:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid or missing officer signup code.",
+            )
+
     role = db.query(Role).filter(Role.name == payload.role).first()
     if role is None:
         role = Role(name=payload.role)

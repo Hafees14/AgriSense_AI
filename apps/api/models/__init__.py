@@ -7,3 +7,4 @@ from apps.api.models.weather import WeatherCache  # noqa: F401
 from apps.api.models.chat import ChatMessage  # noqa: F401
 from apps.api.models.notification import Notification  # noqa: F401
 from apps.api.models.iot import SensorReading  # noqa: F401
+from apps.api.models.contact import ContactMessage  # noqa: F401

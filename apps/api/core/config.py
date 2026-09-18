@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     WEATHER_API_BASE_URL: str = "https://api.open-meteo.com/v1"
     LLM_API_KEY: str = ""
 
+    # Anyone can self-register as "farmer" freely, but "officer"/"researcher"
+    # accounts can review other farmers' diagnoses (see require_role in
+    # core/deps.py) — self-service signup into those roles needs this shared
+    # code so it isn't wide open. Empty string (the default) disables
+    # officer/researcher signup entirely until a real code is configured.
+    OFFICER_SIGNUP_CODE: str = ""
+
     # Base URL this API is served from, used to build public links to
     # locally-stored files (e.g. uploaded diagnosis images). This is what
     # the browser uses.

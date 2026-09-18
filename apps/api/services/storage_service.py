@@ -43,3 +43,19 @@ def upload_diagnosis_image(contents: bytes, content_type: str, user_id: str) -> 
 
     # Served by the StaticFiles mount in apps/api/main.py
     return f"{settings.API_PUBLIC_URL}/uploads/{user_id}/{filename}"
+
+
+def upload_farm_image(contents: bytes, content_type: str, user_id: str, farm_id: str) -> str:
+    """Save a farm photo to local disk and return its public URL. Reuses
+    the same validated-upload mechanism and StaticFiles mount as diagnosis
+    images rather than a second storage path — just a different subfolder
+    so the two are easy to tell apart on disk."""
+    ext = "jpg" if content_type == "image/jpeg" else content_type.split("/")[-1]
+    farm_dir = UPLOAD_DIR / "farms" / user_id
+    farm_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = f"{farm_id}.{ext}"
+    file_path = farm_dir / filename
+    file_path.write_bytes(contents)
+
+    return f"{settings.API_PUBLIC_URL}/uploads/farms/{user_id}/{filename}"

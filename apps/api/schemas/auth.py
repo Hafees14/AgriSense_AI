@@ -7,6 +7,11 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     phone: str | None = None
     role: str = Field(default="farmer", pattern="^(farmer|officer|researcher)$")
+    # Required only when role is officer/researcher — checked against
+    # OFFICER_SIGNUP_CODE server-side. Not itself sensitive (it's not a
+    # password), just a shared gate so self-service signup can't grant
+    # review access to other farmers' diagnoses.
+    officer_code: str | None = None
     # en = English, si = Sinhala, ta = Tamil. Drives both the UI language on
     # subsequent logins (via GET /auth/me) and the language the chat
     # assistant / diagnosis treatment text respond in.

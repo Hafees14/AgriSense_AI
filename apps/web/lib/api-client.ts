@@ -12,12 +12,25 @@ function getTokens(): TokenPair | null {
   return raw ? (JSON.parse(raw) as TokenPair) : null;
 }
 
+// The native `storage` event only fires in OTHER tabs, never the tab that
+// made the change — so anything reacting to auth state in this same tab
+// (the Navbar, useAuth, useCurrentUser) needs a same-tab signal too. This
+// is the one place tokens are ever written or cleared, so it's the one
+// place that needs to broadcast the change.
+export const AUTH_CHANGE_EVENT = "agrisense:auth-change";
+
+function broadcastAuthChange() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
+}
+
 function setTokens(tokens: TokenPair) {
   window.localStorage.setItem("agrisense_tokens", JSON.stringify(tokens));
+  broadcastAuthChange();
 }
 
 function clearTokens() {
   window.localStorage.removeItem("agrisense_tokens");
+  broadcastAuthChange();
 }
 
 async function refreshTokens(): Promise<TokenPair | null> {
@@ -74,9 +87,30 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return (await res.json()) as T;
 }
 
+export type LocationSource = "manual" | "gps" | "geocoded";
+
+export interface FarmPayload {
+  name: string;
+  latitude?: number;
+  longitude?: number;
+  location_source?: LocationSource;
+  address?: string;
+  land_size_ha?: number;
+  region?: string;
+  farm_type?: string;
+  main_crops?: string;
+}
+
+export interface Farm extends FarmPayload {
+  id: string;
+  image_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export const api = {
   auth: {
-    register: (payload: { name: string; email: string; password: string; phone?: string; role?: string; language?: string }) =>
+    register: (payload: { name: string; email: string; password: string; phone?: string; role?: string; language?: string; officer_code?: string }) =>
       request("/auth/register", { method: "POST", body: JSON.stringify(payload), auth: false }),
     login: async (email: string, password: string) => {
       const tokens = await request<TokenPair>("/auth/login", {
@@ -94,10 +128,16 @@ export const api = {
   },
 
   farms: {
-    list: () => request("/farms"),
-    create: (payload: { name: string; latitude?: number; longitude?: number; land_size_ha?: number; region?: string }) =>
-      request("/farms", { method: "POST", body: JSON.stringify(payload) }),
-    get: (farmId: string) => request(`/farms/${farmId}`),
+    list: () => request<Farm[]>("/farms"),
+    create: (payload: FarmPayload) => request<Farm>("/farms", { method: "POST", body: JSON.stringify(payload) }),
+    get: (farmId: string) => request<Farm>(`/farms/${farmId}`),
+    update: (farmId: string, payload: Partial<FarmPayload>) =>
+      request<Farm>(`/farms/${farmId}`, { method: "PATCH", body: JSON.stringify(payload) }),
+    uploadImage: (farmId: string, file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      return request<Farm>(`/farms/${farmId}/image`, { method: "POST", body: formData });
+    },
   },
 
   diagnoses: {
@@ -149,6 +189,11 @@ export const api = {
     summary: (days = 30) => request(`/reviews/summary?days=${days}`),
     submit: (diagnosisId: string, expertNotes?: string) =>
       request(`/reviews/${diagnosisId}`, { method: "PATCH", body: JSON.stringify({ expert_notes: expertNotes ?? null }) }),
+  },
+
+  contact: {
+    send: (payload: { name: string; email: string; subject: string; message: string }) =>
+      request("/contact", { method: "POST", body: JSON.stringify(payload), auth: false }),
   },
 };
 

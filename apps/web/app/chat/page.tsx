@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api-client";
 import AuthGuard from "@/components/AuthGuard";
 import { useLanguage } from "@/lib/i18n";
@@ -80,7 +80,9 @@ function Chat() {
   const [input, setInput] = useState("");
   const [sessionId, setSessionId] = useState<string | undefined>();
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // Load any saved chat history from this device on first render.
   useEffect(() => {
@@ -98,31 +100,62 @@ function Chat() {
     saveChat({ sessionId, messages });
   }, [hydrated, sessionId, messages]);
 
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages, sending]);
+
   async function handleSend() {
-    if (!input.trim()) return;
-    const userMessage: Message = { role: "user", content: input };
+    const trimmed = input.trim();
+    // Guards against both an empty send and a duplicate send fired while
+    // a request is already in flight (e.g. Enter pressed twice quickly).
+    if (!trimmed || sending) return;
+
+    const userMessage: Message = { role: "user", content: trimmed };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
+    setError(null);
     setSending(true);
 
     try {
-      const response = (await api.chat.send(userMessage.content, sessionId)) as { session_id: string; reply: string };
+      const response = (await api.chat.send(userMessage.content, sessionId)) as {
+        session_id: string;
+        reply: string;
+      };
       setSessionId(response.session_id);
       setMessages((prev) => [...prev, { role: "assistant", content: response.reply }]);
+    } catch (err) {
+      // Never swallow this: surface it in the UI, and put the farmer's
+      // message back in the box so it isn't lost.
+      setError(
+        err instanceof Error
+          ? err.message
+          : "The AI assistant is temporarily unavailable. Please try again shortly."
+      );
+      setInput(trimmed);
+      setMessages((prev) => prev.filter((m) => m !== userMessage));
     } finally {
       setSending(false);
     }
   }
 
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // Enter sends; Shift+Enter inserts a newline instead.
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  }
+
   return (
-    <main className="mx-auto flex h-[calc(100vh-57px)] max-w-2xl flex-col px-6 py-6">
-      <h1 className="mb-1 text-2xl font-bold text-primary">💬 {t("chat.title")}</h1>
-      <p className="mb-4 text-sm text-neutral-500">
+    <main className="mx-auto flex h-[calc(100vh-64px)] max-w-2xl flex-col px-4 py-6 sm:px-6">
+      <h1 className="mb-1 font-display text-2xl font-semibold text-ink">{t("chat.title")}</h1>
+      <p className="mb-4 text-sm text-ink-soft">
         Ask about crop issues, irrigation, or fertilizer — I already know your farm and recent diagnoses.
       </p>
-      <div className="flex-1 space-y-3 overflow-y-auto">
-        {messages.length === 0 && (
-          <p className="rounded-xl bg-neutral-100 p-4 text-neutral-500">
+
+      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto">
+        {messages.length === 0 && !sending && (
+          <p className="rounded-lg bg-paper-raised p-4 text-ink-soft">
             Try: &quot;My tomato leaves are curling, what should I do?&quot;
           </p>
         )}
@@ -130,28 +163,50 @@ function Chat() {
           <div
             key={i}
             className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-[15px] ${
-              m.role === "user" ? "ml-auto bg-primary text-white" : "bg-neutral-100 text-neutral-800"
+              m.role === "user" ? "ml-auto bg-primary text-paper" : "bg-paper-raised text-ink"
             }`}
           >
             {m.content}
           </div>
         ))}
-        {sending && <div className="max-w-[60%] rounded-2xl bg-neutral-100 px-4 py-2.5 text-neutral-400">Typing…</div>}
+        {sending && (
+          <div
+            className="flex max-w-[60%] items-center gap-1.5 rounded-2xl bg-paper-raised px-4 py-3 text-ink-soft"
+            aria-live="polite"
+          >
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-ink-soft" />
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-ink-soft [animation-delay:150ms]" />
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-ink-soft [animation-delay:300ms]" />
+          </div>
+        )}
       </div>
-      <div className="mt-4 flex gap-2">
-        <input
+
+      {error && (
+        <div role="alert" className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-chili-50 px-4 py-2.5 text-sm text-chili-dark">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="shrink-0 font-medium underline">
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      <div className="mt-4 flex items-end gap-2">
+        <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
+          onKeyDown={handleKeyDown}
           placeholder={t("chat.placeholder")}
-          className="flex-1 rounded-full border border-neutral-300 px-4 py-3"
+          rows={1}
+          aria-label={t("chat.placeholder")}
+          className="max-h-32 flex-1 resize-none rounded-2xl border border-line bg-paper-raised px-4 py-3 text-[15px] focus:border-primary"
         />
         <button
           onClick={handleSend}
-          disabled={sending}
-          className="rounded-full bg-primary px-6 py-3 font-semibold text-white disabled:opacity-50"
+          disabled={sending || !input.trim()}
+          aria-busy={sending}
+          className="shrink-0 rounded-full bg-primary px-6 py-3 font-semibold text-paper disabled:opacity-50"
         >
-          {t("chat.send")}
+          {sending ? "…" : t("chat.send")}
         </button>
       </div>
     </main>

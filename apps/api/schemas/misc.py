@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 
 
 class ChatRequest(BaseModel):
@@ -21,6 +21,20 @@ class ChatResponse(BaseModel):
     session_id: str
     reply: str
     follow_up_questions: list[str] = []
+
+
+class ContactMessageCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=150)
+    email: EmailStr
+    subject: str = Field(min_length=2, max_length=200)
+    message: str = Field(min_length=10, max_length=5000)
+
+
+class ContactMessageOut(BaseModel):
+    id: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class WeatherOut(BaseModel):

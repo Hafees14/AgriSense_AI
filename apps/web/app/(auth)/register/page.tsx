@@ -11,10 +11,14 @@ const LANGUAGE_OPTIONS: { code: Language; label: string }[] = [
   { code: "ta", label: "தமிழ் (Tamil)" },
 ];
 
+type Role = "farmer" | "officer" | "researcher";
+
 export default function RegisterPage() {
   const router = useRouter();
   const { t, setLanguage } = useLanguage();
   const [form, setForm] = useState({ name: "", email: "", password: "", phone: "", language: "en" as Language });
+  const [role, setRole] = useState<Role>("farmer");
+  const [officerCode, setOfficerCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -23,7 +27,13 @@ export default function RegisterPage() {
     setError(null);
     setLoading(true);
     try {
-      await api.auth.register({ ...form, role: "farmer" });
+      await api.auth.register({
+        ...form,
+        role,
+        // Only sent when relevant — the backend rejects officer/researcher
+        // signup entirely unless a code was actually configured server-side.
+        ...(role !== "farmer" ? { officer_code: officerCode } : {}),
+      });
       await api.auth.login(form.email, form.password);
       // The account is now saved with this language — reflect it in the UI
       // immediately rather than waiting for the next /auth/me refresh.
@@ -87,6 +97,37 @@ export default function RegisterPage() {
             ))}
           </select>
         </div>
+
+        <div>
+          <label className="mb-1 block text-sm font-medium text-neutral-600">Account type</label>
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value as Role)}
+            className="w-full rounded-lg border border-neutral-300 px-4 py-2"
+          >
+            <option value="farmer">Farmer</option>
+            <option value="officer">Agricultural officer</option>
+            <option value="researcher">Researcher</option>
+          </select>
+        </div>
+
+        {role !== "farmer" && (
+          <div>
+            <label className="mb-1 block text-sm font-medium text-neutral-600">Officer/researcher signup code</label>
+            <input
+              type="text"
+              placeholder="Provided by your program coordinator"
+              value={officerCode}
+              onChange={(e) => setOfficerCode(e.target.value)}
+              className="w-full rounded-lg border border-neutral-300 px-4 py-2"
+              required
+            />
+            <p className="mt-1 text-xs text-neutral-500">
+              This role can review other farmers&apos; diagnoses, so it requires a code from your team — not open
+              self-signup.
+            </p>
+          </div>
+        )}
 
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button
