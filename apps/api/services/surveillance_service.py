@@ -5,33 +5,13 @@ from sqlalchemy.orm import Session
 from apps.api.models.diagnosis import Diagnosis
 from apps.api.models.farm import Farm
 from apps.api.models.notification import Notification
+from apps.api.services.geo_utils import bounding_box, haversine_km
 
 # A single diagnosis at or above this confidence is treated as reliable
 # enough, on its own, to warn nearby farmers — no need to wait for multiple
 # independent reports of the same problem.
 CONFIDENCE_THRESHOLD = 0.90
 OUTBREAK_RADIUS_KM = 100.0
-EARTH_RADIUS_KM = 6371.0
-
-
-def _bounding_box(lat: float, lon: float, radius_km: float) -> tuple[float, float, float, float]:
-    """Cheap pre-filter box passed to the DB query, refined afterwards with
-    a real haversine distance check. A pure lat/lon box gets meaningfully
-    inaccurate at 100 km (it's not a circle, and longitude degrees shrink
-    away from the equator), so it's only used to cut down the candidate
-    set before the precise check below.
-    """
-    lat_delta = radius_km / 111.0
-    lon_delta = radius_km / (111.0 * max(0.1, abs(math.cos(math.radians(lat)))))
-    return lat - lat_delta, lat + lat_delta, lon - lon_delta, lon + lon_delta
-
-
-def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    lat1_r, lon1_r, lat2_r, lon2_r = map(math.radians, (lat1, lon1, lat2, lon2))
-    dlat = lat2_r - lat1_r
-    dlon = lon2_r - lon1_r
-    a = math.sin(dlat / 2) ** 2 + math.cos(lat1_r) * math.cos(lat2_r) * math.sin(dlon / 2) ** 2
-    return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(a))
 
 
 def check_and_raise_outbreak_alert(db: Session, new_diagnosis: Diagnosis) -> Notification | None:
@@ -47,7 +27,7 @@ def check_and_raise_outbreak_alert(db: Session, new_diagnosis: Diagnosis) -> Not
     origin_lat = float(new_diagnosis.latitude)
     origin_lon = float(new_diagnosis.longitude)
 
-    lat_min, lat_max, lon_min, lon_max = _bounding_box(origin_lat, origin_lon, OUTBREAK_RADIUS_KM)
+    lat_min, lat_max, lon_min, lon_max = bounding_box(origin_lat, origin_lon, OUTBREAK_RADIUS_KM)
 
     candidate_farms = (
         db.query(Farm)
@@ -63,7 +43,7 @@ def check_and_raise_outbreak_alert(db: Session, new_diagnosis: Diagnosis) -> Not
 
     recipient_user_ids: set[str] = set()
     for farm in candidate_farms:
-        distance_km = _haversine_km(origin_lat, origin_lon, float(farm.latitude), float(farm.longitude))
+        distance_km = haversine_km(origin_lat, origin_lon, float(farm.latitude), float(farm.longitude))
         if distance_km <= OUTBREAK_RADIUS_KM:
             recipient_user_ids.add(farm.user_id)
 

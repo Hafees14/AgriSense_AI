@@ -76,7 +76,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
 export const api = {
   auth: {
-    register: (payload: { name: string; email: string; password: string; phone?: string; role?: string }) =>
+    register: (payload: { name: string; email: string; password: string; phone?: string; role?: string; language?: string }) =>
       request("/auth/register", { method: "POST", body: JSON.stringify(payload), auth: false }),
     login: async (email: string, password: string) => {
       const tokens = await request<TokenPair>("/auth/login", {
@@ -88,6 +88,9 @@ export const api = {
       return tokens;
     },
     logout: () => clearTokens(),
+    me: () => request("/auth/me"),
+    updateLanguage: (language: "en" | "si" | "ta") =>
+      request("/auth/me/language", { method: "PATCH", body: JSON.stringify({ language }) }),
   },
 
   farms: {
@@ -132,6 +135,20 @@ export const api = {
   notifications: {
     list: (unreadOnly = false) => request(`/notifications?unread_only=${unreadOnly}`),
     markRead: (id: string) => request(`/notifications/${id}/read`, { method: "PATCH" }),
+  },
+
+  outbreaks: {
+    list: (params: Record<string, string>) => {
+      const qs = new URLSearchParams(params).toString();
+      return request(`/outbreaks${qs ? `?${qs}` : ""}`);
+    },
+  },
+
+  reviews: {
+    queue: () => request("/reviews/queue"),
+    summary: (days = 30) => request(`/reviews/summary?days=${days}`),
+    submit: (diagnosisId: string, expertNotes?: string) =>
+      request(`/reviews/${diagnosisId}`, { method: "PATCH", body: JSON.stringify({ expert_notes: expertNotes ?? null }) }),
   },
 };
 

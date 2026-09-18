@@ -2,11 +2,70 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --color-primary: #1b5e20;
-  --color-earth: #e0a800;
+/*
+ * NOTE: this file was previously never imported anywhere in the app (not
+ * in app/layout.tsx, not via an app/globals.css re-export), so none of
+ * this — including Tailwind's own base/utility layers — was actually
+ * reaching the browser. Fixed by importing it from app/layout.tsx.
+ */
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  @apply bg-neutral-50 text-neutral-900;
+  @apply bg-paper text-ink;
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* Sinhala and Tamil get a UI face built for that script instead of
+   silently falling back to whatever sans the OS ships with. */
+html[lang="si"] body {
+  font-family: var(--font-sinhala), var(--font-sans), sans-serif;
+}
+html[lang="ta"] body {
+  font-family: var(--font-tamil), var(--font-sans), sans-serif;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display), Georgia, serif;
+  letter-spacing: -0.01em;
+}
+html[lang="si"] h1,
+html[lang="si"] h2,
+html[lang="si"] h3 {
+  font-family: var(--font-sinhala), var(--font-sans), sans-serif;
+  letter-spacing: normal;
+}
+html[lang="ta"] h1,
+html[lang="ta"] h2,
+html[lang="ta"] h3 {
+  font-family: var(--font-tamil), var(--font-sans), sans-serif;
+  letter-spacing: normal;
+}
+
+::selection {
+  background: theme("colors.primary.light");
+  color: theme("colors.paper.DEFAULT");
+}
+
+/* Visible keyboard focus everywhere, instead of relying on individual
+   components to remember to add it. */
+:focus-visible {
+  outline: 2px solid theme("colors.primary.DEFAULT");
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

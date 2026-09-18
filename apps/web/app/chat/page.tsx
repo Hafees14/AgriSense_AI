@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api-client";
 import AuthGuard from "@/components/AuthGuard";
+import { useLanguage } from "@/lib/i18n";
 
 interface Message {
   role: "user" | "assistant";
@@ -74,6 +75,7 @@ export default function ChatPage() {
 }
 
 function Chat() {
+  const { t } = useLanguage();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sessionId, setSessionId] = useState<string | undefined>();
@@ -114,7 +116,7 @@ function Chat() {
 
   return (
     <main className="mx-auto flex h-[calc(100vh-57px)] max-w-2xl flex-col px-6 py-6">
-      <h1 className="mb-1 text-2xl font-bold text-primary">💬 Ask AgriSense</h1>
+      <h1 className="mb-1 text-2xl font-bold text-primary">💬 {t("chat.title")}</h1>
       <p className="mb-4 text-sm text-neutral-500">
         Ask about crop issues, irrigation, or fertilizer — I already know your farm and recent diagnoses.
       </p>
@@ -141,7 +143,7 @@ function Chat() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSend()}
-          placeholder="e.g. My tomato leaves are curling"
+          placeholder={t("chat.placeholder")}
           className="flex-1 rounded-full border border-neutral-300 px-4 py-3"
         />
         <button
@@ -149,7 +151,7 @@ function Chat() {
           disabled={sending}
           className="rounded-full bg-primary px-6 py-3 font-semibold text-white disabled:opacity-50"
         >
-          Send
+          {t("chat.send")}
         </button>
       </div>
     </main>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 const STORAGE_KEY = "agrisense_tokens";
+export { STORAGE_KEY as AUTH_STORAGE_KEY };
 
 function readIsAuthed(): boolean {
   if (typeof window === "undefined") return false;

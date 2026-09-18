@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from httpx import HTTPStatusError
 
 from apps.api.core.config import settings
-from apps.api.routers import auth, chat, diagnoses, farms, notifications, recommendations, weather
+from apps.api.routers import auth, chat, diagnoses, farms, notifications, outbreaks, recommendations, reviews, weather
 
 logger = logging.getLogger("agrisense.api")
 
@@ -62,6 +62,8 @@ app.include_router(chat.router)
 app.include_router(weather.router)
 app.include_router(recommendations.router)
 app.include_router(notifications.router)
+app.include_router(outbreaks.router)
+app.include_router(reviews.router)
 
 
 @app.get("/health", tags=["system"])

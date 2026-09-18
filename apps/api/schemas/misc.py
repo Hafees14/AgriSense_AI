@@ -52,3 +52,29 @@ class NotificationOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class OutbreakHotspot(BaseModel):
+    """A clustered, anonymized cell — never an individual farmer's exact
+    location or identity. latitude/longitude are the centroid of a rounded
+    grid cell (~1.1 km), and report_count is the number of *distinct*
+    farmers who reported in that cell, not raw report rows (so one farmer
+    submitting several photos can't inflate a hotspot on their own).
+    """
+
+    diagnosis_type: str
+    label: str
+    severity: str | None
+    report_count: int
+    latitude: float
+    longitude: float
+    distance_km: float
+    last_reported_at: datetime
+
+
+class OutbreakMapOut(BaseModel):
+    center_latitude: float
+    center_longitude: float
+    radius_km: float
+    generated_at: datetime
+    hotspots: list[OutbreakHotspot]

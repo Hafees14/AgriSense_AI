@@ -3,6 +3,12 @@
 import { useState } from "react";
 import { api, type GeolocationCoords } from "@/lib/api-client";
 import AuthGuard from "@/components/AuthGuard";
+import { useLanguage } from "@/lib/i18n";
+import { enqueueDiagnosis } from "@/lib/offlineQueue";
+import OfflineQueueBanner from "@/components/OfflineQueueBanner";
+import ExpertBadge from "@/components/ExpertBadge";
+import SeverityTag from "@/components/SeverityTag";
+import { compressImage } from "@/lib/imageCompression";
 
 // Nearby-outbreak alerts (disease/pest reports above 90% confidence within
 // 100 km) depend on knowing where this diagnosis was taken. Browser
@@ -29,6 +35,8 @@ interface DiagnosisResult {
   result_label: string;
   confidence_score: number;
   severity: string | null;
+  needs_expert_review: boolean;
+  expert_reviewed: boolean;
   organic_treatment?: string;
   chemical_treatment?: string;
   prevention_tips?: string;
@@ -52,18 +60,21 @@ export default function DiagnosePage() {
 }
 
 function DiagnoseForm() {
+  const { t } = useLanguage();
   const [type, setType] = useState<DiagnosisType>("disease");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [result, setResult] = useState<DiagnosisResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [queuedMessage, setQueuedMessage] = useState<string | null>(null);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const selected = e.target.files?.[0] ?? null;
     setFile(selected);
     setResult(null);
     setError(null);
+    setQueuedMessage(null);
     setPreview(selected ? URL.createObjectURL(selected) : null);
   }
 
@@ -71,17 +82,41 @@ function DiagnoseForm() {
     if (!file) return;
     setLoading(true);
     setError(null);
+    setQueuedMessage(null);
+    const coords = await getDeviceLocation();
+    const uploadFile = await compressImage(file);
+
+    // No point even attempting the request if the device is already known
+    // to be offline — queue immediately instead of waiting for a fetch to
+    // time out.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      await enqueueDiagnosis({ diagnosisType: type, imageBlob: uploadFile, fileName: uploadFile.name, fileType: uploadFile.type, coords });
+      setQueuedMessage(t("offline.queuedMessage"));
+      setLoading(false);
+      return;
+    }
+
     try {
-      const coords = await getDeviceLocation();
       const response =
         type === "plant_id"
-          ? await api.diagnoses.identifyPlant(file, coords)
+          ? await api.diagnoses.identifyPlant(uploadFile, coords)
           : type === "disease"
-            ? await api.diagnoses.detectDisease(file, undefined, undefined, coords)
-            : await api.diagnoses.detectPest(file, undefined, coords);
+            ? await api.diagnoses.detectDisease(uploadFile, undefined, undefined, coords)
+            : await api.diagnoses.detectPest(uploadFile, undefined, coords);
       setResult(response as DiagnosisResult);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "We couldn't complete the diagnosis. Please try again.");
+      // A thrown TypeError from fetch (as opposed to an HTTP error response,
+      // which api-client turns into a regular Error with a message) means
+      // the request never reached the server — a dropped connection mid
+      // photo-upload, not a rejected diagnosis. Queue it instead of just
+      // showing an error the farmer can't do anything about in the field.
+      const isNetworkFailure = err instanceof TypeError || (typeof navigator !== "undefined" && !navigator.onLine);
+      if (isNetworkFailure) {
+        await enqueueDiagnosis({ diagnosisType: type, imageBlob: uploadFile, fileName: uploadFile.name, fileType: uploadFile.type, coords });
+        setQueuedMessage(t("offline.queuedMessage"));
+      } else {
+        setError(err instanceof Error ? err.message : "We couldn't complete the diagnosis. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -89,8 +124,10 @@ function DiagnoseForm() {
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-10">
-      <h1 className="mb-1 text-2xl font-bold text-primary">What do you want to check?</h1>
-      <p className="mb-6 text-neutral-600">Choose a type, then take or upload a clear, close-up photo.</p>
+      <h1 className="mb-1 text-2xl font-bold text-primary">{t("diagnose.title")}</h1>
+      <p className="mb-4 text-neutral-600">Choose a type, then take or upload a clear, close-up photo.</p>
+
+      <OfflineQueueBanner />
 
       <div className="mb-6 grid grid-cols-3 gap-2">
         {TYPE_OPTIONS.map((opt) => (
@@ -132,11 +169,15 @@ function DiagnoseForm() {
         disabled={!file || loading}
         className="mt-4 w-full rounded-xl bg-primary py-4 text-lg font-semibold text-white shadow-sm disabled:opacity-50"
       >
-        {loading ? "Analyzing…" : "Get my diagnosis"}
+        {loading ? t("diagnose.submitting") : t("diagnose.submit")}
       </button>
 
       {error && (
         <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>
+      )}
+
+      {queuedMessage && (
+        <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">📡 {queuedMessage}</p>
       )}
 
       {result && (
@@ -146,11 +187,10 @@ function DiagnoseForm() {
             <span className="text-sm text-neutral-500">{(result.confidence_score * 100).toFixed(0)}% confidence</span>
           </div>
 
-          {result.severity && (
-            <p className="mb-3 inline-block rounded-full bg-earth/20 px-3 py-1 text-xs font-medium text-earth">
-              Severity: {result.severity}
-            </p>
-          )}
+          <div className="mb-3 flex flex-wrap gap-2">
+            <ExpertBadge needsExpertReview={result.needs_expert_review} expertReviewed={result.expert_reviewed} />
+            <SeverityTag severity={result.severity} />
+          </div>
 
           {result.retry_guidance && (
             <p className="mb-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">{result.retry_guidance}</p>

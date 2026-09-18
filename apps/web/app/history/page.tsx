@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api-client";
 import AuthGuard from "@/components/AuthGuard";
+import ExpertBadge from "@/components/ExpertBadge";
+import SeverityTag from "@/components/SeverityTag";
 
 interface HistoryItem {
   id: string;
@@ -13,6 +15,8 @@ interface HistoryItem {
   severity: string | null;
   image_url: string;
   progress_group_id: string | null;
+  needs_expert_review: boolean;
+  expert_reviewed: boolean;
   created_at: string;
 }
 
@@ -71,10 +75,13 @@ function History() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={item.image_url} alt={item.result_label} className="h-16 w-16 rounded-lg object-cover" />
             <div className="flex-1">
-              <p className="font-medium">{item.result_label}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-medium">{item.result_label}</p>
+                <ExpertBadge needsExpertReview={item.needs_expert_review} expertReviewed={item.expert_reviewed} />
+                <SeverityTag severity={item.severity} />
+              </div>
               <p className="text-sm text-neutral-500">
                 {new Date(item.created_at).toLocaleDateString()} · {(item.confidence_score * 100).toFixed(0)}%
-                {item.severity && ` · ${item.severity}`}
               </p>
             </div>
           </div>

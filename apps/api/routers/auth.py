@@ -11,9 +11,17 @@ from apps.api.core.security import (
     hash_password,
     verify_password,
 )
+from apps.api.core.deps import get_current_user
 from apps.api.db.session import get_db
 from apps.api.models.user import Role, User, UserSession
-from apps.api.schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse, UserOut
+from apps.api.schemas.auth import (
+    LanguageUpdateRequest,
+    LoginRequest,
+    RefreshRequest,
+    RegisterRequest,
+    TokenResponse,
+    UserOut,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -51,6 +59,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
         password_hash=hash_password(payload.password),
         phone=payload.phone,
         role_id=role.id,
+        language_pref=payload.language,
     )
     db.add(user)
     db.commit()
@@ -85,3 +94,20 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
 
     return _issue_tokens(db, user)
+
+
+@router.get("/me", response_model=UserOut)
+def get_me(user: User = Depends(get_current_user)):
+    return UserOut(id=user.id, name=user.name, email=user.email, role=user.role.name, language_pref=user.language_pref)
+
+
+@router.patch("/me/language", response_model=UserOut)
+def update_language(
+    payload: LanguageUpdateRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    user.language_pref = payload.language
+    db.commit()
+    db.refresh(user)
+    return UserOut(id=user.id, name=user.name, email=user.email, role=user.role.name, language_pref=user.language_pref)
