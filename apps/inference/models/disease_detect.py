@@ -8,7 +8,7 @@ from apps.inference.preprocessing.image_pipeline import download_image, preproce
 from apps.inference.schemas import DetectionResponse
 from apps.inference.utils.labels import load_labels
 
-MODEL_VERSION = "disease-detect-efficientnet-b3-v1"
+MODEL_VERSION = "disease-detect-efficientnet-b3-v2"
 WEIGHTS_PATH = Path(__file__).resolve().parents[1] / "weights" / "disease_detect.onnx"
 LABELS_PATH = Path(__file__).resolve().parents[1] / "weights" / "disease_labels.json"
 
