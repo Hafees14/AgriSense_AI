@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, String
-from sqlalchemy.dialects.mysql import CHAR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from apps.api.db.session import Base
@@ -25,7 +24,7 @@ class User(Base, UUIDPKMixin, TimestampMixin):
     language_pref: Mapped[str] = mapped_column(String(10), default="en")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    role_id: Mapped[str] = mapped_column(CHAR(36), ForeignKey("roles.id"), nullable=False)
+    role_id: Mapped[str] = mapped_column(String(36), ForeignKey("roles.id"), nullable=False)
     role: Mapped["Role"] = relationship(back_populates="users")
 
     farms: Mapped[list["Farm"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -37,7 +36,7 @@ class User(Base, UUIDPKMixin, TimestampMixin):
 
 class UserSession(Base, UUIDPKMixin):
     __tablename__ = "sessions"
-    user_id: Mapped[str] = mapped_column(CHAR(36), ForeignKey("users.id"), nullable=False)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
     refresh_token_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     device_info: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

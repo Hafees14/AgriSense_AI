@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from sqlalchemy import JSON, Enum, ForeignKey, String, Table, Text, Column
-from sqlalchemy.dialects.mysql import CHAR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from apps.api.db.session import Base
@@ -10,8 +9,8 @@ from apps.api.models.base import TimestampMixin, UUIDPKMixin
 disease_plants = Table(
     "disease_plants",
     Base.metadata,
-    Column("disease_id", CHAR(36), ForeignKey("diseases.id"), primary_key=True),
-    Column("plant_id", CHAR(36), ForeignKey("plants.id"), primary_key=True),
+    Column("disease_id", String(36), ForeignKey("diseases.id"), primary_key=True),
+    Column("plant_id", String(36), ForeignKey("plants.id"), primary_key=True),
 )
 
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import date
 
 from sqlalchemy import Date, Enum, ForeignKey, Numeric, String
-from sqlalchemy.dialects.mysql import CHAR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from apps.api.db.session import Base
@@ -12,7 +11,7 @@ from apps.api.models.base import TimestampMixin, UUIDPKMixin
 
 class Farm(Base, UUIDPKMixin, TimestampMixin):
     __tablename__ = "farms"
-    user_id: Mapped[str] = mapped_column(CHAR(36), ForeignKey("users.id"), nullable=False)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     latitude: Mapped[float | None] = mapped_column(Numeric(9, 6), nullable=True)
     longitude: Mapped[float | None] = mapped_column(Numeric(9, 6), nullable=True)
@@ -41,8 +40,8 @@ class Farm(Base, UUIDPKMixin, TimestampMixin):
 
 class Field(Base, UUIDPKMixin, TimestampMixin):
     __tablename__ = "fields"
-    farm_id: Mapped[str] = mapped_column(CHAR(36), ForeignKey("farms.id"), nullable=False)
-    crop_id: Mapped[str | None] = mapped_column(CHAR(36), ForeignKey("plants.id"), nullable=True)
+    farm_id: Mapped[str] = mapped_column(String(36), ForeignKey("farms.id"), nullable=False)
+    crop_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("plants.id"), nullable=True)
     planting_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     expected_harvest_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     area_ha: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)

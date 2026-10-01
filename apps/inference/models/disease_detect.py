@@ -8,37 +8,34 @@ from apps.inference.preprocessing.image_pipeline import download_image, preproce
 from apps.inference.schemas import DetectionResponse
 from apps.inference.utils.labels import load_labels
 
-MODEL_VERSION = "disease-detect-efficientnet-b4-v1"
+MODEL_VERSION = "disease-detect-efficientnet-b3-v1"
 WEIGHTS_PATH = Path(__file__).resolve().parents[1] / "weights" / "disease_detect.onnx"
 LABELS_PATH = Path(__file__).resolve().parents[1] / "weights" / "disease_labels.json"
 
 
 def _normalize(label: str) -> str:
-    """Dataset label files rarely match a human-readable string exactly —
-    PlantVillage-style exports commonly look like "Tomato___Early_blight"
-    or "Tomato_healthy" rather than "Early Blight". This strips the crop
-    prefix (before "___" or the first underscore-separated segment when it
-    looks like a crop name), replaces separators with spaces, and
-    lowercases, so TREATMENT_LOOKUP matches regardless of the exact
-    formatting your labels.json happens to use.
+    """Turn a dataset label into the key format used by TREATMENT_LOOKUP.
+
+    PlantVillage-style labels look like "Tomato___Early_blight",
+    "Corn_(maize)___Common_rust_" or "Pepper,_bell___healthy". The crop name
+    comes before "___", so everything up to and including it is dropped.
+    Then every run of characters that is not a letter or digit (underscores,
+    parentheses, commas, hyphens, spaces) becomes a single space and the
+    result is lowercased, e.g.:
+
+        "Grape___Esca_(Black_Measles)"  ->  "esca black measles"
+        "Pepper,_bell___healthy"        ->  "healthy"
+        "Corn_(maize)___Common_rust_"   ->  "common rust"
+
+    Labels without "___" are normalized as a whole.
     """
-    cleaned = label.replace("___", "_")
-    parts = [p for p in re.split(r"[_\-]+", cleaned) if p]
-    # Drop a leading crop-name token (e.g. "Tomato", "Potato", "Apple",
-    # "Corn", "Grape", "Pepper") if present, since treatments below are
-    # keyed by disease name only.
-    known_crops = {
-        "tomato", "potato", "apple", "corn", "maize", "grape", "pepper",
-        "bell", "strawberry", "peach", "cherry", "squash", "soybean",
-        "orange", "blueberry", "raspberry",
-    }
-    if parts and parts[0].lower() in known_crops:
-        parts = parts[1:]
-    return " ".join(parts).strip().lower()
+    disease = label.split("___")[-1]
+    disease = re.sub(r"[^a-zA-Z0-9]+", " ", disease)
+    return disease.strip().lower()
 
 
 # Keyed by normalized disease name (crop prefix stripped, lowercased,
-# underscores→spaces) so this matches regardless of exact labels.json
+# punctuation -> spaces) so this matches regardless of exact labels.json
 # formatting. Covers the standard PlantVillage/PlantDoc disease classes.
 # IMPORTANT: if your model predicts a disease not listed here, it will
 # still return a correct label + confidence, but these four advice fields
@@ -200,6 +197,11 @@ TREATMENT_LOOKUP: dict[str, dict] = {
         "prevention_tips": "Control psyllid populations, use certified disease-free nursery stock, remove infected trees promptly.",
     },
 }
+
+# The PlantVillage corn label combines two names ("Cercospora_leaf_spot
+# Gray_leaf_spot"), so it normalizes to this longer key. Point it at the
+# existing gray leaf spot entry.
+TREATMENT_LOOKUP["cercospora leaf spot gray leaf spot"] = TREATMENT_LOOKUP["gray leaf spot"]
 
 
 def get_disease_info(label: str) -> dict:

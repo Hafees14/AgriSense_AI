@@ -7,7 +7,6 @@ Create Date: 2026-09-18
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import mysql
 
 revision = "0002"
 down_revision = "0001"
@@ -24,7 +23,7 @@ def upgrade() -> None:
 
     op.create_table(
         "contact_messages",
-        sa.Column("id", mysql.CHAR(36), primary_key=True),
+        sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("name", sa.String(150), nullable=False),
         sa.Column("email", sa.String(255), nullable=False),
         sa.Column("subject", sa.String(200), nullable=False),

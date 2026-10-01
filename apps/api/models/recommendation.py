@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Text
-from sqlalchemy.dialects.mysql import CHAR
+from sqlalchemy import DateTime, Enum, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from apps.api.db.session import Base
@@ -12,8 +11,8 @@ from apps.api.models.base import TimestampMixin, UUIDPKMixin
 
 class Recommendation(Base, UUIDPKMixin, TimestampMixin):
     __tablename__ = "recommendations"
-    farm_id: Mapped[str] = mapped_column(CHAR(36), ForeignKey("farms.id"), nullable=False)
-    field_id: Mapped[str | None] = mapped_column(CHAR(36), ForeignKey("fields.id"), nullable=True)
+    farm_id: Mapped[str] = mapped_column(String(36), ForeignKey("farms.id"), nullable=False)
+    field_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("fields.id"), nullable=True)
     type: Mapped[str] = mapped_column(
         Enum("irrigation", "fertilizer", "harvest", "disease_risk", "general", name="recommendation_type"),
         nullable=False,
