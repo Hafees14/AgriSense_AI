@@ -7,8 +7,9 @@ import onnxruntime as ort
 from apps.inference.preprocessing.image_pipeline import download_image, preprocess_for_classification
 from apps.inference.schemas import DetectionResponse
 from apps.inference.utils.labels import load_labels
+from apps.inference.models.local_crop_treatments import LOCAL_CROP_LOOKUP
 
-MODEL_VERSION = "disease-detect-efficientnet-b3-v2"
+MODEL_VERSION = "disease-detect-efficientnet-b3-v3"
 WEIGHTS_PATH = Path(__file__).resolve().parents[1] / "weights" / "disease_detect.onnx"
 LABELS_PATH = Path(__file__).resolve().parents[1] / "weights" / "disease_labels.json"
 
@@ -205,12 +206,12 @@ TREATMENT_LOOKUP["cercospora leaf spot gray leaf spot"] = TREATMENT_LOOKUP["gray
 
 
 def get_disease_info(label: str) -> dict:
-    """Look up treatment info, trying the exact label first (in case
-    labels.json already stores clean names), then a normalized match.
-    Returns {} if nothing matches, so callers can safely .get() further.
-    """
+    if label in LOCAL_CROP_LOOKUP:
+        return LOCAL_CROP_LOOKUP[label]
+
     if label in TREATMENT_LOOKUP:
         return TREATMENT_LOOKUP[label]
+
     return TREATMENT_LOOKUP.get(_normalize(label), {})
 
 

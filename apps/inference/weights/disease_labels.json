@@ -36,5 +36,19 @@
   "34": "Tomato___Target_Spot",
   "35": "Tomato___Tomato_Yellow_Leaf_Curl_Virus",
   "36": "Tomato___Tomato_mosaic_virus",
-  "37": "Tomato___healthy"
+  "37": "Tomato___healthy",
+  "38": "Rice___Bacterial_leaf_blight",
+  "39": "Rice___Brown_spot",
+  "40": "Rice___Leaf_blast",
+  "41": "Tea___Algal_leaf_spot",
+  "42": "Tea___Black_blight",
+  "43": "Tea___Blister_blight",
+  "44": "Tea___Gray_blight",
+  "45": "Tea___healthy",
+  "46": "Tea___Spider_mites",
+  "47": "Coconut___Bud_root_dropping",
+  "48": "Coconut___Bud_rot",
+  "49": "Coconut___Gray_leaf_spot",
+  "50": "Coconut___Leaf_rot",
+  "51": "Coconut___Stem_bleeding"
 }
