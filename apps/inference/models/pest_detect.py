@@ -8,7 +8,7 @@ from apps.inference.preprocessing.image_pipeline import download_image, preproce
 from apps.inference.schemas import DetectionResponse
 from apps.inference.utils.labels import load_labels
 
-MODEL_VERSION = "pest-detect-yolov11n-v1"
+MODEL_VERSION = "pest-detect-yolov11s-v2"
 WEIGHTS_PATH = Path(__file__).resolve().parents[1] / "weights" / "pest_detect.onnx"
 LABELS_PATH = Path(__file__).resolve().parents[1] / "weights" / "pest_labels.json"
 CONF_THRESHOLD = 0.25
@@ -148,6 +148,27 @@ PEST_INFO_LOOKUP: dict[str, dict] = {
         "organic_treatment": "Insecticidal soap or neem oil; increase humidity; predatory mites.",
         "chemical_treatment": "Miticide labeled for the specific mite species per label instructions.",
         "prevention_tips": "Avoid drought stress, monitor regularly in dry weather.",
+    },
+    "brown plant hopper": {
+        "severity": "critical",
+        "causes": "Nilaparvata lugens, a major rice pest that also transmits viral diseases and causes 'hopperburn'.",
+        "organic_treatment": "Encourage natural predators (spiders, mirid bugs); avoid excess nitrogen fertilization.",
+        "chemical_treatment": "Systemic insecticide (e.g. buprofezin) per label instructions and local resistance advisories.",
+        "prevention_tips": "Use resistant rice varieties, avoid continuous rice cropping, synchronize planting with neighbors.",
+    },
+    "rice gall midge": {
+        "severity": "high",
+        "causes": "Larvae of Orseolia oryzae feed at the growing point of rice tillers, forming hollow 'silver shoot' (onion-leaf) galls instead of grain-bearing panicles.",
+        "organic_treatment": "Remove and destroy galled tillers early; conserve parasitic wasps that attack the larvae.",
+        "chemical_treatment": "Granular systemic insecticide at the recommended growth stage, per label instructions and local advisories.",
+        "prevention_tips": "Plant resistant varieties, synchronize planting with neighbors, avoid late planting, control grassy weeds and volunteer rice that host the midge.",
+    },
+    "rice leaf hopper": {
+        "severity": "moderate",
+        "causes": "Sap-sucking leafhoppers (e.g. Nephotettix species) that weaken plants and can spread rice tungro virus.",
+        "organic_treatment": "Conserve natural predators such as spiders and mirid bugs; use light traps to monitor and reduce adult numbers.",
+        "chemical_treatment": "Systemic insecticide per label instructions and local advisories, mainly where tungro is a risk.",
+        "prevention_tips": "Use tungro-resistant varieties, synchronize planting, remove weeds and infected volunteer rice, avoid excess nitrogen.",
     },
 }
 
