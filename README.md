@@ -72,7 +72,7 @@ the stack stays testable.
 | Task | Model | Status |
 |---|---|---|
 | Disease detection | EfficientNet-B3, 52 classes (17 crops) | Trained (`disease-detect-efficientnet-b3-v3`) |
-| Pest detection | YOLOv11 (nano/small) | Not trained yet |
+| Pest detection | YOLOv11s (small), includes rice pests | `pest-detect-yolov11s-v2` |
 | Plant identification | EfficientNet-B3 | Not trained yet |
 
 ## Disease detection model
@@ -258,6 +258,8 @@ Notes on the numbers:
 - `apps/web/public/` folder included (was missing, broke Docker web build)
 - Disease label normalization fixed so all 38 original classes return treatment advice
 - Treatment advice added for the rice, tea and coconut classes (`local_crop_treatments.py`)
+- Pest detection model version updated to `pest-detect-yolov11s-v2` (`apps/inference/models/pest_detect.py`)
+- Added treatment, causes, and prevention guidance for rice pests: brown plant hopper, rice gall midge, and rice leaf hopper
 
 ## Optional: Docker Compose
 ```
