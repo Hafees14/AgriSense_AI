@@ -3,6 +3,7 @@ import { Fraunces, Inter, Noto_Sans_Sinhala, Noto_Sans_Tamil } from "next/font/g
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { LanguageProvider } from "@/lib/i18n";
+import { ToastProvider } from "@/components/ui/Toast";
 import "@/styles/globals.css";
 
 const display = Fraunces({
@@ -46,11 +47,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     >
       <body className="flex min-h-screen flex-col text-[16px] leading-relaxed sm:text-[17px]">
         <LanguageProvider>
-          <Navbar />
-          <main id="main" className="flex-1">
-            {children}
-          </main>
-          <Footer />
+          <ToastProvider>
+            <Navbar />
+            <main id="main" className="flex-1">
+              {children}
+            </main>
+            <Footer />
+          </ToastProvider>
         </LanguageProvider>
       </body>
     </html>

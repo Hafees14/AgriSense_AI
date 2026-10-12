@@ -6,14 +6,17 @@ services:
       MYSQL_DATABASE: agrisense_db
       MYSQL_USER: agrisense
       MYSQL_PASSWORD: agrisense
-      MYSQL_ROOT_PASSWORD: Annoor-akyash.15
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in infra/.env}
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pAnnoor-akyash.15"]
+      test:
+        - CMD-SHELL
+        - 'mysqladmin ping -h localhost -u root --password="$${MYSQL_ROOT_PASSWORD}" --silent'
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
 
   api:
     build:
@@ -24,17 +27,28 @@ services:
       - ../apps/api/.env
     environment:
       DB_HOST: mysql
-      DB_PORT: 3306
+      DB_PORT: "3306"
+      DB_USER: agrisense
+      DB_PASSWORD: agrisense
+      DB_NAME: agrisense_db
+      DATABASE_URL: mysql+pymysql://agrisense:agrisense@mysql:3306/agrisense_db
       INFERENCE_SERVICE_URL: http://inference:8001
+      API_PUBLIC_URL: http://localhost:8002
+      INTERNAL_API_URL: http://api:8000
     depends_on:
       mysql:
         condition: service_healthy
+      inference:
+        condition: service_started
     ports:
-      - "8000:8000"
-    command: >
-      sh -c "alembic -c apps/api/alembic.ini upgrade head &&
-             python -m apps.api.db.seed &&
-             uvicorn apps.api.main:app --host 0.0.0.0 --port 8000"
+      - "8002:8000"
+    command:
+      - sh
+      - -c
+      - >-
+        alembic -c apps/api/alembic.ini upgrade head &&
+        python -m apps.api.db.seed &&
+        uvicorn apps.api.main:app --host 0.0.0.0 --port 8000
 
   inference:
     build:
@@ -43,17 +57,24 @@ services:
     restart: unless-stopped
     ports:
       - "8001:8001"
-    command: uvicorn apps.inference.main:app --host 0.0.0.0 --port 8001
+    command:
+      - uvicorn
+      - apps.inference.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8001"
 
   web:
     build:
       context: ../apps/web
       dockerfile: ../../infra/Dockerfile.web
       args:
-        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8002
     restart: unless-stopped
     depends_on:
-      - api
+      api:
+        condition: service_started
     ports:
       - "3000:3000"
 

@@ -33,6 +33,27 @@ const config: Config = {
       maxWidth: {
         content: "68rem",
       },
+      // Radii: one small step for controls, one for surfaces. Avoids the
+      // oversized "pill card" look.
+      borderRadius: {
+        control: "0.5rem",
+        card: "0.75rem",
+      },
+      // Restrained, paper-tinted shadows (not neutral black glow).
+      boxShadow: {
+        card: "0 1px 2px rgba(28,43,30,0.06), 0 1px 1px rgba(28,43,30,0.04)",
+        raised: "0 4px 12px rgba(28,43,30,0.10)",
+      },
+      // Minimum comfortable touch target.
+      minHeight: { touch: "2.75rem" },
+      minWidth: { touch: "2.75rem" },
+      keyframes: {
+        "toast-in": {
+          from: { opacity: "0", transform: "translateY(8px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
+      },
+      animation: { "toast-in": "toast-in 160ms ease-out" },
     },
   },
   plugins: [],

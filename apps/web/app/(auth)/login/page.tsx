@@ -1,61 +1,97 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api-client";
 import { useLanguage } from "@/lib/i18n";
+import { EMAIL_RE, authErrorMessage } from "@/lib/authErrors";
+import AuthCard from "@/components/AuthCard";
+import Alert from "@/components/ui/Alert";
+import Button from "@/components/ui/Button";
+import Field from "@/components/ui/Field";
+
+type Errors = { email?: string; password?: string };
 
 export default function LoginPage() {
   const router = useRouter();
   const { t } = useLanguage();
+  const formRef = useRef<HTMLFormElement>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [errors, setErrors] = useState<Errors>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  function validate(): Errors {
+    const e: Errors = {};
+    if (!email.trim()) e.email = t("validation.emailRequired");
+    else if (!EMAIL_RE.test(email.trim())) e.email = t("validation.emailInvalid");
+    if (!password) e.password = t("validation.passwordRequired");
+    return e;
+  }
+
+  async function handleSubmit(ev: React.FormEvent) {
+    ev.preventDefault();
+    if (loading) return;
     setError(null);
+    const found = validate();
+    setErrors(found);
+    const first = (["email", "password"] as const).find((k) => found[k]);
+    if (first) {
+      (formRef.current?.elements.namedItem(first) as HTMLElement | null)?.focus();
+      return;
+    }
     setLoading(true);
     try {
-      await api.auth.login(email, password);
+      await api.auth.login(email.trim(), password);
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
-    } finally {
+      setError(authErrorMessage(err, t));
       setLoading(false);
     }
   }
 
   return (
-    <main className="mx-auto max-w-sm px-6 py-24">
-      <h1 className="mb-6 text-2xl font-bold text-primary">{t("login.title")}</h1>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <input
+    <AuthCard
+      title={t("login.title")}
+      subtitle={t("login.subtitle")}
+      footer={
+        <>
+          {t("login.noAccount")}{" "}
+          <Link href="/register" className="font-medium text-primary-dark underline underline-offset-2 hover:text-primary">
+            {t("login.signupLink")}
+          </Link>
+        </>
+      }
+    >
+      <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-5">
+        {error && <Alert>{error}</Alert>}
+        <Field
+          name="email"
           type="email"
-          placeholder={t("login.email")}
+          label={t("login.email")}
+          autoComplete="email"
+          inputMode="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded-lg border border-neutral-300 px-4 py-2"
+          error={errors.email}
           required
         />
-        <input
+        <Field
+          name="password"
           type="password"
-          placeholder={t("login.password")}
+          label={t("login.password")}
+          autoComplete="current-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full rounded-lg border border-neutral-300 px-4 py-2"
+          error={errors.password}
           required
         />
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-lg bg-primary py-2 font-medium text-white disabled:opacity-50"
-        >
+        <Button type="submit" size="lg" loading={loading} className="w-full">
           {loading ? t("login.submitting") : t("login.submit")}
-        </button>
+        </Button>
       </form>
-    </main>
+    </AuthCard>
   );
 }
