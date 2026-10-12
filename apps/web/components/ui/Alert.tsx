@@ -1,9 +1,10 @@
-type Tone = "error" | "success" | "info";
+type Tone = "error" | "success" | "info" | "warning";
 
 const TONES: Record<Tone, { box: string; icon: string }> = {
   error: { box: "border-chili bg-chili-50 text-chili-dark", icon: "!" },
   success: { box: "border-primary bg-primary-50 text-primary-dark", icon: "✓" },
   info: { box: "border-monsoon bg-monsoon-50 text-monsoon-dark", icon: "i" },
+  warning: { box: "border-earth bg-earth-50 text-earth-dark", icon: "▲" },
 };
 
 /** Inline message. Icon + border carry the tone as well as colour. Errors are announced immediately. */
