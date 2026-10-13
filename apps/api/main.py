@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from httpx import HTTPStatusError
+from httpx import HTTPStatusError, RequestError
 
 from apps.api.core.config import settings
 from apps.api.routers import auth, chat, contact, diagnoses, farms, notifications, outbreaks, recommendations, reviews, weather
@@ -25,6 +25,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(RequestError)
+async def inference_unreachable_handler(request: Request, exc: RequestError):
+    logger.error("Downstream service unreachable on %s: %s", request.url.path, type(exc).__name__)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "A required service is temporarily unavailable. Please try again in a moment."},
+    )
 
 
 @app.exception_handler(HTTPStatusError)

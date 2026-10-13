@@ -1,5 +1,13 @@
+import logging
 from functools import lru_cache
+from urllib.parse import quote_plus
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger("agrisense.config")
+
+DEFAULT_SECRET_KEY = "change-me-in-production"
 
 
 class Settings(BaseSettings):
@@ -7,9 +15,10 @@ class Settings(BaseSettings):
 
     APP_NAME: str = "AgriSense AI API"
     ENV: str = "development"
-    DEBUG: bool = True
+    # DEBUG turns on SQL echo logging. Keep it off unless you are debugging.
+    DEBUG: bool = False
 
-    SECRET_KEY: str = "change-me-in-production"
+    SECRET_KEY: str = DEFAULT_SECRET_KEY
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
@@ -20,7 +29,10 @@ class Settings(BaseSettings):
     DB_PASSWORD: str = "agrisense"
     DB_NAME: str = "agrisense_db"
 
-    DATABASE_URL: str = "sqlite:///./agrisense.db"
+    # Full SQLAlchemy URL. If it is empty: when DB_HOST is set (in .env or the
+    # environment) a MySQL URL is built from the DB_* values above; otherwise
+    # a local SQLite file is used so the project runs with no setup.
+    DATABASE_URL: str = ""
 
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 
@@ -28,6 +40,9 @@ class Settings(BaseSettings):
     INFERENCE_RATE_LIMIT_PER_MINUTE: int = 20
 
     INFERENCE_SERVICE_URL: str = "http://localhost:8001"
+    # Shared secret sent to the inference service (header X-Inference-Key).
+    # Must match INFERENCE_API_KEY on the inference service. Empty = no key.
+    INFERENCE_API_KEY: str = ""
     WEATHER_API_KEY: str = ""
     WEATHER_API_BASE_URL: str = "https://api.open-meteo.com/v1"
     LLM_API_KEY: str = ""
@@ -48,7 +63,36 @@ class Settings(BaseSettings):
     # this API over the internal Docker network. "localhost" from inside
     # another container refers to that container itself, not this one, so
     # this must be the Docker Compose service name.
-    INTERNAL_API_URL: str = "http://api:8000"
+    # Leave empty when running without Docker: the inference service then uses API_PUBLIC_URL.
+    # docker-compose.yml sets this to http://api:8000.
+    INTERNAL_API_URL: str = ""
+
+    @model_validator(mode="after")
+    def _finalize(self) -> "Settings":
+        # 1. Database URL: make DB_* actually work, so docs, CI and code agree.
+        if not self.DATABASE_URL:
+            if "DB_HOST" in self.model_fields_set:
+                self.DATABASE_URL = (
+                    f"mysql+pymysql://{quote_plus(self.DB_USER)}:{quote_plus(self.DB_PASSWORD)}"
+                    f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+                )
+            else:
+                self.DATABASE_URL = "sqlite:///./agrisense.db"
+
+        # 2. Secret key: refuse to start outside development with a weak key,
+        #    because anyone who knows the default can forge login tokens.
+        if not self.SECRET_KEY:
+            self.SECRET_KEY = DEFAULT_SECRET_KEY
+        weak = self.SECRET_KEY == DEFAULT_SECRET_KEY or len(self.SECRET_KEY) < 32
+        if weak:
+            if self.ENV.lower() in ("development", "dev", "test", "testing"):
+                logger.warning("SECRET_KEY is weak or default. Fine for local use, never for production.")
+            else:
+                raise ValueError(
+                    "SECRET_KEY is missing, default or shorter than 32 characters. "
+                    "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+                )
+        return self
 
 
 @lru_cache

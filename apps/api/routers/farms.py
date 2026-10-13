@@ -58,7 +58,9 @@ async def upload_farm_image(
 ):
     farm = _get_owned_farm(db, farm_id, user)
     contents = await storage_service.validate_image(file)
-    farm.image_url = storage_service.upload_farm_image(contents, file.content_type, user.id, farm.id)
+    farm.image_url = storage_service.upload_farm_image(
+        contents, storage_service.detect_content_type(contents), user.id, farm.id
+    )
     db.commit()
     db.refresh(farm)
     return farm

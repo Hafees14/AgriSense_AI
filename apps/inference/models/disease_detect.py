@@ -1,14 +1,20 @@
+import base64
+import logging
 import re
 from pathlib import Path
 
 import numpy as np
 import onnxruntime as ort
+from PIL import Image
 
 from apps.inference.preprocessing.image_pipeline import download_image, preprocess_for_classification
 from apps.inference.schemas import DetectionResponse
 from apps.inference.utils.labels import load_labels
+from apps.inference.utils.weights import weights_usable
 from apps.inference.models.local_crop_treatments import LOCAL_CROP_LOOKUP
 
+logger = logging.getLogger("agrisense.inference")
+HEATMAP_MIN_CONFIDENCE = 0.5
 MODEL_VERSION = "disease-detect-efficientnet-b3-v3"
 WEIGHTS_PATH = Path(__file__).resolve().parents[1] / "weights" / "disease_detect.onnx"
 LABELS_PATH = Path(__file__).resolve().parents[1] / "weights" / "disease_labels.json"
@@ -219,9 +225,17 @@ class DiseaseDetector:
     def __init__(self) -> None:
         self._session: ort.InferenceSession | None = None
         self._labels: list[str] = []
-        if WEIGHTS_PATH.exists() and LABELS_PATH.exists():
+        self.stub_reason: str | None = None
+        if weights_usable(WEIGHTS_PATH, LABELS_PATH, "disease"):
             self._session = ort.InferenceSession(str(WEIGHTS_PATH), providers=["CPUExecutionProvider"])
             self._labels = load_labels(LABELS_PATH)
+            n_out = self._session.get_outputs()[0].shape[-1]
+            if isinstance(n_out, int) and n_out != len(self._labels):
+                raise RuntimeError(
+                    f"Disease model has {n_out} outputs but the labels file has {len(self._labels)} entries"
+                )
+        else:
+            self.stub_reason = "weights missing or are a Git LFS pointer"
 
     async def predict(self, image_url: str) -> DetectionResponse:
         image = await download_image(image_url)
@@ -248,15 +262,75 @@ class DiseaseDetector:
         label = self._labels[top_idx]
         confidence = float(probs[top_idx])
 
-        heatmap_url = self._generate_heatmap(image_url, tensor) if confidence >= 0.5 else None
+        heatmap_png_b64 = None
+        if confidence >= HEATMAP_MIN_CONFIDENCE:
+            try:
+                png = occlusion_heatmap_png(self._session, input_name, tensor, top_idx, image)
+                heatmap_png_b64 = base64.b64encode(png).decode("ascii")
+            except Exception:  # the explanation is a bonus; never fail the diagnosis because of it
+                logger.exception("Could not build the explanation heatmap")
         info = get_disease_info(label)
 
-        return DetectionResponse(label=label, confidence=confidence, model_version=MODEL_VERSION, heatmap_url=heatmap_url, **info)
-
-    def _generate_heatmap(self, image_url: str, tensor: np.ndarray) -> str | None:
-        return None
+        return DetectionResponse(
+            label=label, confidence=confidence, model_version=MODEL_VERSION, heatmap_png_b64=heatmap_png_b64, **info
+        )
 
 
 def _softmax(x: np.ndarray) -> np.ndarray:
     exp = np.exp(x - np.max(x))
     return exp / exp.sum()
+
+
+def occlusion_heatmap_png(
+    session: ort.InferenceSession,
+    input_name: str,
+    tensor: np.ndarray,
+    class_idx: int,
+    original: "Image.Image",
+    patch: int = 100,
+    stride: int = 50,
+) -> bytes:
+    """Explain a prediction by hiding parts of the leaf and watching the confidence fall.
+
+    This is an *occlusion sensitivity map*, not Grad-CAM (Grad-CAM needs gradients, which an
+    exported ONNX classifier does not provide). Areas whose removal lowers the confidence the
+    most are the areas the model relied on. Returned as a PNG overlay.
+    """
+    import io
+
+    from PIL import Image
+
+    size = tensor.shape[-1]
+    base = float(_softmax(session.run(None, {input_name: tensor})[0][0])[class_idx])
+    starts = list(range(0, size - patch + 1, stride))
+    batch, coords = [], []
+    for y in starts:
+        for x in starts:
+            masked = tensor.copy()
+            masked[:, :, y : y + patch, x : x + patch] = 0.0  # 0 = the dataset mean after normalisation
+            batch.append(masked[0])
+            coords.append((y, x))
+    logits = session.run(None, {input_name: np.stack(batch).astype(np.float32)})[0]
+    probs = np.exp(logits - logits.max(axis=1, keepdims=True))
+    probs = probs / probs.sum(axis=1, keepdims=True)
+
+    heat = np.zeros((size, size), dtype=np.float32)
+    count = np.zeros((size, size), dtype=np.float32)
+    for (y, x), p in zip(coords, probs[:, class_idx]):
+        heat[y : y + patch, x : x + patch] += max(0.0, base - float(p))
+        count[y : y + patch, x : x + patch] += 1.0
+    heat = heat / np.maximum(count, 1.0)
+    if heat.max() > 0:
+        heat = heat / heat.max()
+
+    # Simple blue -> yellow -> red colour ramp, blended over the photo.
+    r = np.clip(heat * 2.0, 0, 1)
+    g = np.clip(1.0 - np.abs(heat - 0.5) * 2.0, 0, 1)
+    b = np.clip(1.0 - heat * 2.0, 0, 1)
+    colour = (np.stack([r, g, b], axis=-1) * 255).astype(np.uint8)
+    base_img = original.convert("RGB").resize((size, size))
+    alpha = (0.15 + 0.55 * heat)[..., None]
+    blended = (np.asarray(base_img) * (1 - alpha) + colour * alpha).astype(np.uint8)
+    buf = io.BytesIO()
+    Image.fromarray(blended).save(buf, format="PNG")
+    return buf.getvalue()

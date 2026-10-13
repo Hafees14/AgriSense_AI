@@ -6,6 +6,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY apps/inference/requirements.txt apps/inference/requirements.txt
 RUN pip install --no-cache-dir -r apps/inference/requirements.txt
 COPY apps/inference apps/inference
+# Fail the build early if the model files are Git LFS pointers instead of the real models.
+RUN for f in apps/inference/weights/*.onnx; do \
+      if head -c 20 "$f" | grep -q "version https://git"; then \
+        echo "ERROR: $f is a Git LFS pointer. Run 'git lfs pull' and build again." >&2; exit 1; \
+      fi; \
+    done
 ENV PYTHONPATH=/app
 EXPOSE 8001
 CMD ["uvicorn", "apps.inference.main:app", "--host", "0.0.0.0", "--port", "8001"]

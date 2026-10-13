@@ -11,7 +11,12 @@ out/
 # apps/inference/weights/*.json
 .DS_Store
 *.log
--e 
+
 apps/api/uploads/
 !apps/api/uploads/.gitkeep
 apps/inference/weights_backup/
+
+# local database files and build output
+*.db
+*.sqlite3
+*.tsbuildinfo

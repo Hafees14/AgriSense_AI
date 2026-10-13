@@ -4,14 +4,17 @@ from pathlib import Path
 import numpy as np
 import onnxruntime as ort
 
-from apps.inference.preprocessing.image_pipeline import download_image, preprocess_for_detection
-from apps.inference.schemas import DetectionResponse
+from apps.inference.preprocessing.image_pipeline import download_image, letterbox, preprocess_for_detection
+from apps.inference.schemas import Detection, DetectionResponse
 from apps.inference.utils.labels import load_labels
+from apps.inference.utils.weights import weights_usable
 
 MODEL_VERSION = "pest-detect-yolov11s-v2"
 WEIGHTS_PATH = Path(__file__).resolve().parents[1] / "weights" / "pest_detect.onnx"
 LABELS_PATH = Path(__file__).resolve().parents[1] / "weights" / "pest_labels.json"
 CONF_THRESHOLD = 0.25
+IOU_THRESHOLD = 0.45
+MAX_DETECTIONS = 50
 
 
 def _normalize(label: str) -> str:
@@ -177,13 +180,16 @@ class PestDetector:
     def __init__(self) -> None:
         self._session: ort.InferenceSession | None = None
         self._labels: list[str] = []
-        if WEIGHTS_PATH.exists() and LABELS_PATH.exists():
+        self.stub_reason: str | None = None
+        if weights_usable(WEIGHTS_PATH, LABELS_PATH, "pest"):
             self._session = ort.InferenceSession(str(WEIGHTS_PATH), providers=["CPUExecutionProvider"])
             self._labels = load_labels(LABELS_PATH)
+        else:
+            self.stub_reason = "weights missing or are a Git LFS pointer"
 
     async def predict(self, image_url: str) -> DetectionResponse:
         image = await download_image(image_url)
-        tensor = preprocess_for_detection(image)
+        tensor, scale, pad = letterbox(image, 640)
 
         if self._session is None:
             info = PEST_INFO_LOOKUP["tomato fruitworm"]
@@ -191,10 +197,23 @@ class PestDetector:
 
         input_name = self._session.get_inputs()[0].name
         raw_output = self._session.run(None, {input_name: tensor})[0]
-        label, confidence = _best_detection(raw_output, self._labels, CONF_THRESHOLD)
-        info = get_pest_info(label)
+        found = decode_detections(raw_output, self._labels, CONF_THRESHOLD, IOU_THRESHOLD, scale, pad, image.size)
 
-        return DetectionResponse(label=label, confidence=confidence, model_version=MODEL_VERSION, **info)
+        if not found:
+            # Nothing above the threshold: report the best raw score so callers can still show "not sure".
+            _, best_score = _best_detection(raw_output, self._labels, CONF_THRESHOLD)
+            return DetectionResponse(label="Unknown", confidence=best_score, model_version=MODEL_VERSION, detections=[], detection_count=0)
+
+        top = found[0]
+        info = get_pest_info(top.label)
+        return DetectionResponse(
+            label=top.label,
+            confidence=top.confidence,
+            model_version=MODEL_VERSION,
+            detections=found,
+            detection_count=len(found),
+            **info,
+        )
 
 
 def get_pest_info(label: str) -> dict:
@@ -279,3 +298,79 @@ def _best_detection(raw_output: np.ndarray, labels: list[str], conf_threshold: f
     class_idx = int(np.argmax(class_scores[best_idx]))
     label = labels[class_idx] if class_idx < len(labels) else "Unknown"
     return label, best_score
+
+
+def _iou(box: np.ndarray, others: np.ndarray) -> np.ndarray:
+    x1 = np.maximum(box[0], others[:, 0])
+    y1 = np.maximum(box[1], others[:, 1])
+    x2 = np.minimum(box[2], others[:, 2])
+    y2 = np.minimum(box[3], others[:, 3])
+    inter = np.clip(x2 - x1, 0, None) * np.clip(y2 - y1, 0, None)
+    area = (box[2] - box[0]) * (box[3] - box[1])
+    area_o = (others[:, 2] - others[:, 0]) * (others[:, 3] - others[:, 1])
+    return inter / np.maximum(area + area_o - inter, 1e-9)
+
+
+def decode_detections(
+    raw_output: np.ndarray,
+    labels: list[str],
+    conf_threshold: float,
+    iou_threshold: float,
+    scale: float,
+    pad: tuple[float, float],
+    original_size: tuple[int, int],
+) -> list[Detection]:
+    """Turn a raw YOLO output [1, 4+classes, anchors] into boxes on the ORIGINAL image.
+
+    Steps: transpose, drop low scores, convert centre-xywh to corner-xyxy, undo the
+    letterbox padding and scaling, then non-max suppression per class.
+    """
+    out = np.asarray(raw_output)
+    if out.ndim == 3:
+        out = out[0]
+    num_classes = len(labels)
+    if out.shape[0] == 4 + num_classes:
+        out = out.T
+    if out.ndim != 2 or out.shape[1] != 4 + num_classes:
+        return []
+
+    boxes_xywh, class_scores = out[:, :4], out[:, 4:]
+    if class_scores.max(initial=0.0) > 1.5 or class_scores.min(initial=0.0) < -0.5:
+        class_scores = 1.0 / (1.0 + np.exp(-class_scores))
+    class_ids = class_scores.argmax(axis=1)
+    scores = class_scores.max(axis=1)
+
+    keep = scores >= conf_threshold
+    if not keep.any():
+        return []
+    boxes_xywh, class_ids, scores = boxes_xywh[keep], class_ids[keep], scores[keep]
+
+    xyxy = np.empty_like(boxes_xywh)
+    xyxy[:, 0] = boxes_xywh[:, 0] - boxes_xywh[:, 2] / 2
+    xyxy[:, 1] = boxes_xywh[:, 1] - boxes_xywh[:, 3] / 2
+    xyxy[:, 2] = boxes_xywh[:, 0] + boxes_xywh[:, 2] / 2
+    xyxy[:, 3] = boxes_xywh[:, 1] + boxes_xywh[:, 3] / 2
+    xyxy[:, [0, 2]] = (xyxy[:, [0, 2]] - pad[0]) / scale
+    xyxy[:, [1, 3]] = (xyxy[:, [1, 3]] - pad[1]) / scale
+    w, h = original_size
+    xyxy[:, [0, 2]] = np.clip(xyxy[:, [0, 2]], 0, w)
+    xyxy[:, [1, 3]] = np.clip(xyxy[:, [1, 3]], 0, h)
+
+    results: list[Detection] = []
+    for cls in np.unique(class_ids):
+        idx = np.where(class_ids == cls)[0]
+        idx = idx[np.argsort(-scores[idx])]
+        while idx.size:
+            best = idx[0]
+            results.append(
+                Detection(
+                    label=labels[int(cls)] if int(cls) < num_classes else "Unknown",
+                    confidence=float(np.clip(scores[best], 0.0, 1.0)),
+                    box=[round(float(v), 1) for v in xyxy[best]],
+                )
+            )
+            if idx.size == 1:
+                break
+            idx = idx[1:][_iou(xyxy[best], xyxy[idx[1:]]) < iou_threshold]
+    results.sort(key=lambda d: -d.confidence)
+    return results[:MAX_DETECTIONS]

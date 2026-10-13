@@ -6,6 +6,7 @@ import onnxruntime as ort
 from apps.inference.preprocessing.image_pipeline import download_image, preprocess_for_classification
 from apps.inference.schemas import DetectionResponse
 from apps.inference.utils.labels import load_labels
+from apps.inference.utils.weights import weights_usable
 
 MODEL_VERSION = "plant-id-efficientnet-b3-v1"
 WEIGHTS_PATH = Path(__file__).resolve().parents[1] / "weights" / "plant_id.onnx"
@@ -16,9 +17,12 @@ class PlantIdentifier:
     def __init__(self) -> None:
         self._session: ort.InferenceSession | None = None
         self._labels: list[str] = []
-        if WEIGHTS_PATH.exists() and LABELS_PATH.exists():
+        self.stub_reason: str | None = None
+        if weights_usable(WEIGHTS_PATH, LABELS_PATH, "plant_id"):
             self._session = ort.InferenceSession(str(WEIGHTS_PATH), providers=["CPUExecutionProvider"])
             self._labels = load_labels(LABELS_PATH)
+        else:
+            self.stub_reason = "no trained plant identification model"
 
     async def predict(self, image_url: str) -> DetectionResponse:
         image = await download_image(image_url)

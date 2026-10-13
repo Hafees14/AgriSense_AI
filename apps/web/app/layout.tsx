@@ -1,38 +1,19 @@
 import type { Metadata } from "next";
-import { Fraunces, Inter, Noto_Sans_Sinhala, Noto_Sans_Tamil } from "next/font/google";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { LanguageProvider } from "@/lib/i18n";
 import { ToastProvider } from "@/components/ui/Toast";
+// Fonts are bundled with the app (no request to Google at build time or run time).
+import "@fontsource-variable/inter/wght.css";
+import "@fontsource/fraunces/latin-500.css";
+import "@fontsource/fraunces/latin-600.css";
+import "@fontsource/noto-sans-sinhala/sinhala-400.css";
+import "@fontsource/noto-sans-sinhala/sinhala-500.css";
+import "@fontsource/noto-sans-sinhala/sinhala-600.css";
+import "@fontsource/noto-sans-tamil/tamil-400.css";
+import "@fontsource/noto-sans-tamil/tamil-500.css";
+import "@fontsource/noto-sans-tamil/tamil-600.css";
 import "@/styles/globals.css";
-
-const display = Fraunces({
-  subsets: ["latin"],
-  weight: ["500", "600"],
-  variable: "--font-display",
-  display: "swap",
-});
-
-const sans = Inter({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-sans",
-  display: "swap",
-});
-
-const sinhala = Noto_Sans_Sinhala({
-  subsets: ["sinhala"],
-  weight: ["400", "500", "600"],
-  variable: "--font-sinhala",
-  display: "swap",
-});
-
-const tamil = Noto_Sans_Tamil({
-  subsets: ["tamil"],
-  weight: ["400", "500", "600"],
-  variable: "--font-tamil",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "AgriSense AI",
@@ -41,10 +22,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="en"
-      className={`${display.variable} ${sans.variable} ${sinhala.variable} ${tamil.variable}`}
-    >
+    <html lang="en">
       <body className="flex min-h-screen flex-col text-[16px] leading-relaxed sm:text-[17px]">
         <LanguageProvider>
           <ToastProvider>

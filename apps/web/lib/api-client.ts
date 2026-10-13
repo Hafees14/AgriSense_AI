@@ -121,7 +121,19 @@ export const api = {
       setTokens(tokens);
       return tokens;
     },
-    logout: () => clearTokens(),
+    logout: () => {
+      // Tell the server to revoke the session (best effort), then forget the tokens on this device.
+      const current = getTokens();
+      clearTokens();
+      if (current) {
+        fetch(`${API_BASE_URL}/auth/logout`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: current.refresh_token }),
+          keepalive: true,
+        }).catch(() => undefined);
+      }
+    },
     me: () => request("/auth/me"),
     updateLanguage: (language: "en" | "si" | "ta") =>
       request("/auth/me/language", { method: "PATCH", body: JSON.stringify({ language }) }),

@@ -1,7 +1,10 @@
+import base64
+import binascii
+import logging
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from apps.api.core.deps import get_current_user
@@ -16,6 +19,7 @@ from apps.api.services import context_service, storage_service, weather_service
 from apps.api.services.inference_client import needs_expert_review, retry_guidance_for, run_inference
 from apps.api.services.surveillance_service import check_and_raise_outbreak_alert
 
+logger = logging.getLogger("agrisense.diagnoses")
 router = APIRouter(tags=["diagnoses"])
 DiagnosisType = Literal["plant_id", "disease", "pest"]
 
@@ -31,15 +35,39 @@ async def _run_diagnosis(
     user: User,
 ) -> Diagnosis:
     contents = await storage_service.validate_image(file)
-    image_url = storage_service.upload_diagnosis_image(contents, file.content_type, user.id)
 
-    result = await run_inference(diagnosis_type, image_url)
+    # A diagnosis may only be attached to a field the user owns.
+    if field_id:
+        owned = db.query(Field).filter(Field.id == field_id, Field.farm.has(user_id=user.id)).first()
+        if owned is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
+
+    content_type = storage_service.detect_content_type(contents)  # from the real bytes, not the header
+    image_url = storage_service.upload_diagnosis_image(contents, content_type, user.id)
+
+    try:
+        result = await run_inference(diagnosis_type, image_url)
+    except Exception:
+        # Analysis failed: remove the saved photo so failed attempts leave nothing behind.
+        storage_service.delete_stored_image(image_url)
+        raise
     # Defense-in-depth: whatever the inference service returns, never let a
     # malformed/unnormalized model output (e.g. a raw logit or pixel
     # coordinate mistaken for a confidence score) reach the database — the
     # confidence_score column is a tight NUMERIC(5,4) and an out-of-range
     # value throws a DataError that fails the whole request.
     confidence = max(0.0, min(1.0, float(result["confidence"])))
+
+    # Optional explanation overlay: validate it really is a PNG before storing it.
+    heatmap_url = None
+    heatmap_b64 = result.get("heatmap_png_b64")
+    if heatmap_b64:
+        try:
+            png = base64.b64decode(heatmap_b64, validate=True)
+            if len(png) <= storage_service.MAX_FILE_SIZE_BYTES and storage_service.detect_content_type(png) == "image/png":
+                heatmap_url = storage_service.upload_heatmap_image(png, user.id)
+        except (binascii.Error, ValueError, HTTPException):
+            logger.warning("Ignoring an invalid heatmap from the inference service")
 
     diagnosis = Diagnosis(
         user_id=user.id,
@@ -48,7 +76,7 @@ async def _run_diagnosis(
         result_id=result.get("result_id"),
         result_label=result["label"],
         image_url=image_url,
-        heatmap_url=result.get("heatmap_url"),
+        heatmap_url=heatmap_url,
         confidence_score=confidence,
         severity=result.get("severity"),
         model_version=result["model_version"],
@@ -91,8 +119,8 @@ async def _run_diagnosis(
 async def identify_plant(
     file: UploadFile = File(...),
     field_id: str | None = Form(None),
-    latitude: float | None = Form(None),
-    longitude: float | None = Form(None),
+    latitude: float | None = Form(None, ge=-90, le=90),
+    longitude: float | None = Form(None, ge=-180, le=180),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -103,8 +131,8 @@ async def identify_plant(
 async def detect_disease(
     file: UploadFile = File(...),
     field_id: str | None = Form(None),
-    latitude: float | None = Form(None),
-    longitude: float | None = Form(None),
+    latitude: float | None = Form(None, ge=-90, le=90),
+    longitude: float | None = Form(None, ge=-180, le=180),
     progress_group_id: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -116,8 +144,8 @@ async def detect_disease(
 async def detect_pest(
     file: UploadFile = File(...),
     field_id: str | None = Form(None),
-    latitude: float | None = Form(None),
-    longitude: float | None = Form(None),
+    latitude: float | None = Form(None, ge=-90, le=90),
+    longitude: float | None = Form(None, ge=-180, le=180),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):

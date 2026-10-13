@@ -1,7 +1,47 @@
 # AgriSense AI
 
 AI-powered agricultural decision support platform. Monorepo: Next.js frontend,
-FastAPI core backend (MySQL), separate AI inference microservice.
+FastAPI core backend (MySQL, or SQLite for a zero-setup local run), separate AI
+inference microservice.
+
+> **A model prediction is not a guaranteed diagnosis.** Results come from a
+> machine-learning model trained mostly on lab photos. Low-confidence results
+> are flagged and their treatment advice is hidden. Treatment text is a draft
+> that still needs review by an agronomist.
+
+## Status (verified in this repository)
+
+| Feature | Status |
+|---|---|
+| Register, login, refresh, logout, protected routes | Working, covered by automated tests |
+| Disease detection (EfficientNet-B3, 52 classes) | Working end to end with the real model |
+| Pest detection (YOLO, 5 rice pests) | Working: boxes, NMS, count. Not independently validated |
+| Explanation heatmap | Working as an *occlusion sensitivity map* (not Grad-CAM) |
+| Plant identification | **Not available**: no trained model. The API answers 503 and the UI shows "Coming soon" |
+| Prediction history, farms, fields, notifications, outbreak map | Implemented, API tested for history only |
+| MySQL | Migrations are tested in CI. The default local run uses SQLite unless `DB_HOST` is set |
+| Docker Compose | Written but **not built or run by the author of this audit** (no Docker available there). CI builds it |
+
+## Before you start: model files (Git LFS)
+
+The `.onnx` model files are stored with **Git LFS**. A plain clone gives you
+133-byte pointer files and the inference service will report `degraded` and
+refuse to analyse. Install Git LFS and run:
+
+```
+git lfs install
+git lfs pull
+```
+
+Check `http://localhost:8001/health`: `"status": "ok"` means both models loaded.
+
+## Run the tests
+
+```
+pip install -r apps/api/requirements-dev.txt -r apps/inference/requirements.txt
+python -m pytest tests -q          # real-model tests are skipped if the weights are LFS pointers
+cd apps/web && npm run typecheck && npm run lint && npm run build
+```
 
 ## Contents
 
@@ -28,6 +68,10 @@ EXIT;
 
 Create `apps/api/.env` (copy `apps/api/.env.example`) and set DB_PASSWORD to match,
 plus a random SECRET_KEY (`python -c "import secrets; print(secrets.token_hex(32))"`).
+With `DB_HOST` set, the API connects to MySQL using the `DB_*` values (or set
+`DATABASE_URL` yourself). With neither set it uses a local SQLite file, which is
+fine for a quick try but is not what you deploy. If `ENV` is not `development`,
+the API refuses to start unless `SECRET_KEY` is at least 32 characters.
 
 ### 2. Backend API (Terminal 1, from repo root)
 ```
@@ -65,15 +109,17 @@ Check: http://localhost:3000
 ## Machine learning models
 
 The inference service (`apps/inference`) loads ONNX models from
-`apps/inference/weights/`. If a model's weights are missing, its wrapper returns
-a stub response (confidence 0.0, model version ending in `-stub`) so the rest of
-the stack stays testable.
+`apps/inference/weights/`. If a model's weights are missing (or are Git LFS
+pointers), its wrapper returns a stub response (confidence 0.0, model version
+ending in `-stub`). The core API **rejects stub results with a 503**, so a fake
+result can never be shown or saved as a real diagnosis. `/health` on the
+inference service lists which models are really loaded.
 
 | Task | Model | Status |
 |---|---|---|
 | Disease detection | EfficientNet-B3, 52 classes (17 crops) | Trained (`disease-detect-efficientnet-b3-v3`) |
-| Pest detection | YOLOv11s (small), includes rice pests | `pest-detect-yolov11s-v2` |
-| Plant identification | EfficientNet-B3 | Not trained yet |
+| Pest detection | YOLO (Ultralytics export, 5 rice pest classes) | `pest-detect-yolov11s-v2`, weights present, not independently validated |
+| Plant identification | EfficientNet-B3 | Not trained yet. No weights, so the feature is disabled |
 
 ## Disease detection model
 
@@ -237,8 +283,14 @@ Notes on the numbers:
 - The treatment text for rice, tea and coconut is a draft and still needs review
   by an agronomist. The entries for tea black blight and coconut bud root dropping
   need expert confirmation of the exact disease.
-- The heatmap is still a stub, and the pest and plant-ID models are not trained
-  yet.
+- The heatmap is an occlusion sensitivity map (it hides parts of the leaf and
+  measures how the confidence drops). It is an aid, not proof of what the model
+  "looked at". It adds about 3 seconds on a CPU. Grad-CAM is not possible with
+  the exported ONNX file.
+- The pest model has no independent evaluation in this repository, and there is
+  no plant-identification model.
+- Results below 70% confidence are marked "needs expert review", shown as a
+  possible match only, and their treatment advice is hidden.
 
 ### Next steps
 
@@ -246,8 +298,8 @@ Notes on the numbers:
 - Collect healthy rice and coconut leaf photos and add healthy classes.
 - Add a `corrected_label` field so expert corrections can be used for
   retraining.
-- Add Grad-CAM heatmaps.
-- Train the pest detector and plant-ID model.
+- Evaluate the models on independent field photos (per-class precision/recall, confusion matrix).
+- Evaluate the pest detector properly and train a plant-ID model.
 - Have an agronomist review the treatment advice.
 
 ## Known fixes already applied in this build
@@ -261,11 +313,28 @@ Notes on the numbers:
 - Pest detection model version updated to `pest-detect-yolov11s-v2` (`apps/inference/models/pest_detect.py`)
 - Added treatment, causes, and prevention guidance for rice pests: brown plant hopper, rice gall midge, and rice leaf hopper
 
+## Security notes
+
+- `SECRET_KEY` must be strong outside development (enforced at startup).
+- The inference service only fetches images from allowed hosts
+  (`INFERENCE_ALLOWED_IMAGE_HOSTS`, default `localhost,127.0.0.1,api`) and, if
+  `INFERENCE_API_KEY` is set (same value on both services), requires the
+  `X-Inference-Key` header. Set it for any shared or deployed setup.
+- Uploads are checked by decoding the image, not by trusting the browser's
+  content type. Photos are served from `/uploads/<user>/<random-name>`; the
+  names cannot be guessed but the URLs are not login-protected.
+- Rate limiting is in memory, per process. Use a shared store (for example
+  Redis) if you run more than one API process.
+
 ## Optional: Docker Compose
 ```
 cd infra
+cp .env.example .env          # set the passwords
+git lfs pull                  # real model files are required
 docker compose up --build
 ```
+Open http://localhost:3000. The API is on port 8002. The inference build fails
+on purpose if the model files are still LFS pointers.
 Local Python/Node is the more reliable path on Windows — Docker Desktop/WSL2
 can be unstable on slower connections.
 

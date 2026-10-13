@@ -37,6 +37,9 @@ export interface DiagnosisOut {
   chemical_treatment?: string | null;
   prevention_tips?: string | null;
   retry_guidance?: string | null;
+  weather_advisory?: string | null;
+  expert_reviewed?: boolean;
+  expert_notes?: string | null;
 }
 
 export interface RecommendationOut {

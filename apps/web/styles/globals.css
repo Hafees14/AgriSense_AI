@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Font stacks used by tailwind.config.ts and the rules below. The files come from @fontsource packages. */
+:root {
+  --font-display: "Fraunces", Georgia, serif;
+  --font-sans: "Inter Variable", system-ui, sans-serif;
+  --font-sinhala: "Noto Sans Sinhala", "Inter Variable", sans-serif;
+  --font-tamil: "Noto Sans Tamil", "Inter Variable", sans-serif;
+}
+
+
 /*
  * NOTE: this file was previously never imported anywhere in the app (not
  * in app/layout.tsx, not via an app/globals.css re-export), so none of

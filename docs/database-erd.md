@@ -1,4 +1,6 @@
-# Database Schema (MySQL)
+# Database Schema (MySQL; SQLite is used for a zero-setup local run)
+
+Note: `sessions.refresh_token_hash` stores a SHA-256 of the refresh token. Logout sets `revoked`.
 
 All primary keys are CHAR(36) UUIDs, utf8mb4.
 

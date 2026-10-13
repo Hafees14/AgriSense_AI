@@ -51,6 +51,8 @@ interface DiagnosisResult {
 }
 
 const TYPES: DiagnosisType[] = ["disease", "pest", "plant_id"];
+// Plant identification has no trained model yet (the API answers 503 for it), so it is shown but disabled.
+const AVAILABLE: Record<DiagnosisType, boolean> = { disease: true, pest: true, plant_id: false };
 
 // Mirrors apps/api/services/storage_service.py (ALLOWED_CONTENT_TYPES, MAX_FILE_SIZE_BYTES).
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -208,6 +210,7 @@ function DiagnoseForm() {
                 name="diagnosis-type"
                 value={value}
                 checked={type === value}
+                disabled={!AVAILABLE[value]}
                 onChange={() => {
                   setType(value);
                   reset();
@@ -215,7 +218,10 @@ function DiagnoseForm() {
                 className="peer sr-only"
               />
               <span className="block h-full rounded-card border-2 border-line bg-paper-raised px-4 py-3 transition-colors hover:border-ink-soft/50 peer-checked:border-primary peer-checked:bg-primary-50 peer-focus-visible:ring-2 peer-focus-visible:ring-primary/40 peer-disabled:opacity-60">
-                <span className="block font-semibold text-ink">{t(`diagnose.type.${value}`)}</span>
+                <span className="block font-semibold text-ink">
+                  {t(`diagnose.type.${value}`)}
+                  {!AVAILABLE[value] && <span className="ml-2 rounded-full bg-earth-50 px-2 py-0.5 text-xs font-medium text-earth-dark">{t("diagnose.comingSoon")}</span>}
+                </span>
                 <span className="mt-0.5 block text-sm text-ink-soft">{t(`diagnose.type.${value}.desc`)}</span>
               </span>
             </label>
@@ -332,17 +338,21 @@ function ResultCard({
   const healthy = /healthy$/i.test(condition);
   const pct = Math.round(Math.max(0, Math.min(1, result.confidence_score)) * 100);
   const heatmap = result.heatmap_url && /^https?:\/\//i.test(result.heatmap_url) ? result.heatmap_url : null;
-  const sections: [string, string | undefined][] = [
-    [t("diagnose.organic"), result.organic_treatment],
-    [t("diagnose.chemical"), result.chemical_treatment],
-    [t("diagnose.prevention"), result.prevention_tips],
-  ];
+  // Treatment advice for a label the model is unsure about could mislead, so it is only shown for confident results.
+  const sections: [string, string | undefined][] = result.needs_expert_review
+    ? []
+    : [
+        [t("diagnose.organic"), result.organic_treatment],
+        [t("diagnose.chemical"), result.chemical_treatment],
+        [t("diagnose.prevention"), result.prevention_tips],
+      ];
 
   return (
     <Card as="section" className="mt-8" aria-labelledby="result-heading">
+      {result.needs_expert_review && <p className="text-sm font-semibold text-earth-dark">{t("diagnose.possible")}</p>}
       {crop && <p className="text-sm font-medium text-ink-soft">{crop}</p>}
       <h2 id="result-heading" ref={headingRef} tabIndex={-1} className="text-2xl font-semibold text-ink outline-none">
-        {healthy ? `${condition}: ${t("diagnose.healthy")}` : condition}
+        {healthy && !result.needs_expert_review ? `${condition}: ${t("diagnose.healthy")}` : condition}
       </h2>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -370,6 +380,7 @@ function ResultCard({
       <div className="mt-4 space-y-3">
         {result.needs_expert_review && <Alert tone="warning">{t("diagnose.lowConfidence")}</Alert>}
         {result.retry_guidance && <Alert tone="warning">{result.retry_guidance}</Alert>}
+        {result.needs_expert_review && <Alert tone="info">{t("diagnose.adviceHidden")}</Alert>}
         {result.weather_advisory && (
           <Alert tone="info">
             <span className="font-semibold">{t("diagnose.weather")}: </span>
@@ -388,7 +399,7 @@ function ResultCard({
             <figure>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={heatmap} alt={t("diagnose.heatmap")} className="h-48 w-full rounded-control object-cover" />
-              <figcaption className="mt-1 text-sm text-ink-soft">{t("diagnose.heatmap")}</figcaption>
+              <figcaption className="mt-1 text-sm text-ink-soft">{t("diagnose.heatmap")}. {t("diagnose.heatmapNote")}</figcaption>
             </figure>
           )}
         </div>

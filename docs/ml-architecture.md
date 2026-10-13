@@ -3,12 +3,13 @@
 | Task | Model | Format | Status |
 |---|---|---|---|
 | Plant/crop identification | EfficientNet-B3 | ONNX | Not trained yet (stub) |
-| Disease detection | EfficientNet-B3, 52 classes, 300×300 input | ONNX (explainable-AI heatmap hook) | Trained, `disease-detect-efficientnet-b3-v3` |
-| Pest detection | YOLOv11 (nano/small) | ONNX | Not trained yet |
+| Disease detection | EfficientNet-B3, 52 classes, 300×300 input | ONNX (occlusion-sensitivity heatmap) | Trained, `disease-detect-efficientnet-b3-v3` |
+| Pest detection | YOLO (Ultralytics export), 5 rice pests, 640×640 | ONNX | Weights present (`pest-detect-yolov11s-v2`), not independently validated |
 
 Each model wrapper looks for weights under apps/inference/weights/. If absent,
-falls back to a stub response so the rest of the stack stays testable before
-training completes.
+falls back to a stub response. The core API rejects stub results (503), so they
+are never shown or saved as real diagnoses. Weights stored as Git LFS pointers
+count as absent.
 
 ## Disease detection
 
@@ -17,7 +18,8 @@ training completes.
   coconut classes are appended after them.
 - Input: 1×3×300×300, plain resize, ImageNet normalization. Output: raw logits
   with the calibration temperature built into the model.
-- Heatmap: still a stub. Grad-CAM is planned.
+- Heatmap: occlusion sensitivity map (works with the exported ONNX model). True Grad-CAM needs gradients and is not possible from the ONNX file.
+- Pest detection output: boxes with letterbox preprocessing and non-max suppression (conf 0.25, IoU 0.45). The stored diagnosis keeps the top label and confidence.
 - Treatment advice: `TREATMENT_LOOKUP` in `models/disease_detect.py` covers the
   original 38 classes. `models/local_crop_treatments.py` covers the 14 rice, tea
   and coconut classes and is looked up by the exact label.

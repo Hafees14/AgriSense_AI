@@ -1,3 +1,5 @@
+# Start everything:   cp .env.example .env   (edit the passwords)   then   docker compose up --build
+# Needs the real model files: run `git lfs pull` first (the inference image refuses to build with LFS pointers).
 services:
   mysql:
     image: mysql:8.0
@@ -5,7 +7,7 @@ services:
     environment:
       MYSQL_DATABASE: agrisense_db
       MYSQL_USER: agrisense
-      MYSQL_PASSWORD: agrisense
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-agrisense}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in infra/.env}
     volumes:
       - mysql_data:/var/lib/mysql
@@ -29,19 +31,28 @@ services:
       DB_HOST: mysql
       DB_PORT: "3306"
       DB_USER: agrisense
-      DB_PASSWORD: agrisense
+      DB_PASSWORD: ${MYSQL_PASSWORD:-agrisense}
       DB_NAME: agrisense_db
-      DATABASE_URL: mysql+pymysql://agrisense:agrisense@mysql:3306/agrisense_db
+      DATABASE_URL: mysql+pymysql://agrisense:${MYSQL_PASSWORD:-agrisense}@mysql:3306/agrisense_db
       INFERENCE_SERVICE_URL: http://inference:8001
+      INFERENCE_API_KEY: ${INFERENCE_API_KEY:-}
       API_PUBLIC_URL: http://localhost:8002
       INTERNAL_API_URL: http://api:8000
     depends_on:
       mysql:
         condition: service_healthy
       inference:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "8002:8000"
+    volumes:
+      - uploads_data:/app/apps/api/uploads # keep uploaded photos across restarts
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
     command:
       - sh
       - -c
@@ -55,8 +66,18 @@ services:
       context: ../
       dockerfile: infra/Dockerfile.inference
     restart: unless-stopped
+    environment:
+      INFERENCE_API_KEY: ${INFERENCE_API_KEY:-}
+      INFERENCE_ALLOWED_IMAGE_HOSTS: api
+    # Only reachable from the host's own machine, and from other containers by name.
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     command:
       - uvicorn
       - apps.inference.main:app
@@ -74,9 +95,10 @@ services:
     restart: unless-stopped
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "3000:3000"
 
 volumes:
   mysql_data:
+  uploads_data:
