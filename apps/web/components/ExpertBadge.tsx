@@ -16,16 +16,16 @@ export default function ExpertBadge({ needsExpertReview, expertReviewed }: Props
 
   if (expertReviewed) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
-        ✅ {t("badge.verified")}
+      <span className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-dark">
+        <span aria-hidden="true">✓</span> {t("badge.verified")}
       </span>
     );
   }
 
   if (needsExpertReview) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
-        🕵️ {t("badge.pendingReview")}
+      <span className="inline-flex items-center gap-1 rounded-full bg-earth-50 px-3 py-1 text-xs font-semibold text-earth-dark">
+        <span aria-hidden="true">○</span> {t("badge.pendingReview")}
       </span>
     );
   }

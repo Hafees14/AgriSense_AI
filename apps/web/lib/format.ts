@@ -18,3 +18,9 @@ export function formatDate(iso: string, language: Language): string {
 export function percent(score: number): number {
   return Math.round(Math.max(0, Math.min(1, score)) * 100);
 }
+
+export function formatDateTime(iso: string, language: Language): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString(LOCALES[language], { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}

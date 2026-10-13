@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { api } from "@/lib/api-client";
+import { useLanguage } from "@/lib/i18n";
+import { NOTIFICATIONS_CHANGED } from "@/lib/notifications";
 
 interface NotificationOut {
   id: string;
@@ -40,6 +42,7 @@ function BellIcon() {
 
 export default function NotificationBell() {
   const pathname = usePathname();
+  const { t } = useLanguage();
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
@@ -56,9 +59,11 @@ export default function NotificationBell() {
 
     refresh();
     const interval = setInterval(refresh, POLL_INTERVAL_MS);
+    window.addEventListener(NOTIFICATIONS_CHANGED, refresh);
     return () => {
       cancelled = true;
       clearInterval(interval);
+      window.removeEventListener(NOTIFICATIONS_CHANGED, refresh);
     };
     // Re-check immediately whenever the farmer navigates to/from the
     // notifications page, so the badge clears as soon as they've read them.
@@ -67,12 +72,12 @@ export default function NotificationBell() {
   return (
     <Link
       href="/notifications"
-      className="relative flex h-10 w-10 items-center justify-center rounded text-ink-soft hover:bg-primary-50 hover:text-primary"
-      aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
+      className="relative flex h-11 w-11 items-center justify-center rounded text-ink-soft hover:bg-primary-50 hover:text-primary"
+      aria-label={unreadCount > 0 ? t("notifications.unreadLabel").replace("{n}", String(unreadCount)) : t("notifications.title")}
     >
       <BellIcon />
       {unreadCount > 0 && (
-        <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-chili px-1 text-[10px] font-bold text-paper">
+        <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-chili px-1 text-[10px] font-bold text-paper-raised">
           {unreadCount > 9 ? "9+" : unreadCount}
         </span>
       )}

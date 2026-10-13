@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
@@ -48,14 +48,32 @@ export default function Navbar() {
   const currentUser = useCurrentUser();
   const pathname = usePathname();
   const router = useRouter();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
 
   // Close the mobile panel automatically on navigation, so it never sits
   // open over the next page.
   useEffect(() => {
     setMenuOpen(false);
   }, [pathname]);
+
+  // Escape closes the mobile panel and returns focus to the button that opened it.
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        menuButtonRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
+
+  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  // Sinhala/Tamil labels are longer, so the full row only fits from xl.
+  const wide = language !== "en";
 
   function handleLogout() {
     api.auth.logout();
@@ -83,26 +101,27 @@ export default function Navbar() {
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-2 focus:z-50 focus:rounded focus:bg-ink focus:px-3 focus:py-2 focus:text-sm focus:text-paper"
       >
-        Skip to content
+        {t("nav.skip")}
       </a>
 
-      <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
+      <div className="mx-auto flex min-h-16 max-w-6xl flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-2 sm:px-6">
         <Link href="/" className="flex shrink-0 items-center gap-2" onClick={() => setMenuOpen(false)}>
           <LeafMark className="h-8 w-8" />
-          <span className="font-display text-lg font-semibold text-ink">AgriSense</span>
+          <span className="font-display text-lg font-semibold text-ink max-[400px]:hidden">AgriSense</span>
         </Link>
 
         {isAuthenticated === null ? null : isAuthenticated ? (
           <>
             {/* Desktop nav */}
-            <nav className="hidden items-center gap-0.5 lg:flex" aria-label="Main">
+            <nav className={`${wide ? "hidden xl:flex" : "hidden lg:flex"} items-center gap-0.5`} aria-label={t("nav.main")}>
               {loggedInLinks.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
+                  aria-current={isActive(link.href) ? "page" : undefined}
                   className={`border-b-2 px-2.5 py-5 text-sm font-medium transition-colors ${
-                    pathname === link.href
-                      ? "border-primary text-primary"
+                    isActive(link.href)
+                      ? "border-primary text-primary-dark"
                       : "border-transparent text-ink-soft hover:border-line hover:text-ink"
                   }`}
                 >
@@ -110,26 +129,27 @@ export default function Navbar() {
                 </Link>
               ))}
             </nav>
-            <div className="hidden items-center gap-2 lg:flex">
+            <div className={`${wide ? "hidden xl:flex" : "hidden lg:flex"} items-center gap-2`}>
               <LanguageSwitcher />
               <NotificationBell />
               <button
                 onClick={handleLogout}
-                className="rounded border border-line px-3 py-2 text-sm font-medium text-ink-soft hover:border-chili/40 hover:text-chili"
+                className="min-h-[2.5rem] rounded border border-line px-3 text-sm font-medium text-ink-soft hover:border-chili/40 hover:text-chili-dark"
               >
                 {t("nav.logout")}
               </button>
             </div>
 
             {/* Mobile / tablet trigger */}
-            <div className="flex items-center gap-1 lg:hidden">
+            <div className={`flex items-center gap-1 ${wide ? "xl:hidden" : "lg:hidden"}`}>
               <NotificationBell />
               <button
+                ref={menuButtonRef}
                 onClick={() => setMenuOpen((v) => !v)}
                 aria-expanded={menuOpen}
                 aria-controls="mobile-nav"
-                aria-label={menuOpen ? "Close menu" : "Open menu"}
-                className="flex h-10 w-10 items-center justify-center rounded text-ink hover:bg-primary-50"
+                aria-label={menuOpen ? t("nav.closeMenu") : t("nav.openMenu")}
+                className="flex h-11 w-11 items-center justify-center rounded text-ink hover:bg-primary-50"
               >
                 <MenuIcon open={menuOpen} />
               </button>
@@ -138,12 +158,12 @@ export default function Navbar() {
         ) : (
           <div className="flex items-center gap-2">
             <LanguageSwitcher />
-            <Link href="/login" className="rounded px-3 py-2 text-sm font-medium text-ink-soft hover:text-primary">
+            <Link href="/login" className="flex min-h-[2.5rem] items-center rounded px-2 text-sm font-medium text-ink-soft hover:text-primary-dark sm:px-3">
               {t("nav.login")}
             </Link>
             <Link
               href="/register"
-              className="rounded bg-primary px-4 py-2 text-sm font-medium text-paper hover:bg-primary-dark"
+              className="flex min-h-[2.5rem] items-center rounded bg-primary px-3 text-sm font-medium text-paper-raised hover:bg-primary-dark sm:px-4"
             >
               {t("nav.register")}
             </Link>
@@ -152,7 +172,7 @@ export default function Navbar() {
       </div>
 
       {isAuthenticated && menuOpen && (
-        <nav id="mobile-nav" aria-label="Main" className="border-t border-line bg-paper px-4 pb-4 pt-1 lg:hidden">
+        <nav id="mobile-nav" aria-label={t("nav.main")} className={`border-t border-line bg-paper px-4 pb-4 pt-1 ${wide ? "xl:hidden" : "lg:hidden"}`}>
           <ul className="flex flex-col divide-y divide-line">
             {loggedInLinks.map((link) => (
               <li key={link.href}>
@@ -160,8 +180,9 @@ export default function Navbar() {
                     someone tapping with one hand, often outdoors. */}
                 <Link
                   href={link.href}
+                  aria-current={isActive(link.href) ? "page" : undefined}
                   className={`flex min-h-[48px] items-center text-base font-medium ${
-                    pathname === link.href ? "text-primary" : "text-ink"
+                    isActive(link.href) ? "text-primary-dark underline decoration-primary decoration-2 underline-offset-8" : "text-ink"
                   }`}
                 >
                   {link.label}
@@ -173,7 +194,7 @@ export default function Navbar() {
             <LanguageSwitcher />
             <button
               onClick={handleLogout}
-              className="rounded border border-line px-3 py-2 text-sm font-medium text-chili"
+              className="min-h-touch rounded border border-line px-4 text-sm font-medium text-chili-dark"
             >
               {t("nav.logout")}
             </button>

@@ -4,6 +4,15 @@ import { useEffect, useState } from "react";
 import AuthGuard from "@/components/AuthGuard";
 import { api } from "@/lib/api-client";
 import { useLanguage } from "@/lib/i18n";
+import { formatDateTime } from "@/lib/format";
+import { NOTIFICATIONS_CHANGED } from "@/lib/notifications";
+import { useLoad } from "@/lib/useLoad";
+import Alert from "@/components/ui/Alert";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
+import EmptyState from "@/components/ui/EmptyState";
+import Skeleton from "@/components/ui/Skeleton";
+import { useToast } from "@/components/ui/Toast";
 
 interface NotificationOut {
   id: string;
@@ -14,9 +23,7 @@ interface NotificationOut {
   created_at: string;
 }
 
-const TYPE_ICON: Record<string, string> = {
-  outbreak_alert: "🚨",
-};
+const KNOWN_TYPES = ["outbreak_alert"];
 
 export default function NotificationsPage() {
   return (
@@ -27,64 +34,87 @@ export default function NotificationsPage() {
 }
 
 function NotificationsView() {
-  const { t } = useLanguage();
-  const [notifications, setNotifications] = useState<NotificationOut[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  async function load() {
-    setLoading(true);
-    const data = (await api.notifications.list()) as NotificationOut[];
-    setNotifications(data);
-    setLoading(false);
-  }
+  const { t, language } = useLanguage();
+  const toast = useToast();
+  const { data, loading, error, reload } = useLoad(() => api.notifications.list() as Promise<NotificationOut[]>);
+  const [items, setItems] = useState<NotificationOut[]>([]);
+  const [pending, setPending] = useState<string | null>(null);
 
   useEffect(() => {
-    load();
-  }, []);
+    if (data) setItems(data);
+  }, [data]);
 
-  async function handleOpen(notif: NotificationOut) {
-    if (notif.is_read) return;
-    // Optimistic update so the badge/list feel instant rather than waiting
-    // on the round trip.
-    setNotifications((prev) => prev.map((n) => (n.id === notif.id ? { ...n, is_read: true } : n)));
+  async function markRead(id: string) {
+    if (pending) return;
+    setPending(id);
+    // Optimistic update so the list feels instant; reverted below if the request fails.
+    setItems((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
     try {
-      await api.notifications.markRead(notif.id);
+      await api.notifications.markRead(id);
+      window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED));
     } catch {
-      // Revert on failure so the UI doesn't lie about read state.
-      setNotifications((prev) => prev.map((n) => (n.id === notif.id ? { ...n, is_read: false } : n)));
+      setItems((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: false } : n)));
+      toast(t("notifications.markFailed"), "error");
+    } finally {
+      setPending(null);
     }
   }
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-10">
-      <h1 className="mb-6 text-2xl font-bold text-primary">🔔 {t("notifications.title")}</h1>
+    <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:py-12">
+      <h1 className="text-2xl font-semibold text-primary-dark sm:text-3xl">{t("notifications.title")}</h1>
 
-      {loading && <p className="text-neutral-500">Loading…</p>}
+      <div className="mt-6" aria-busy={loading}>
+        {loading && (
+          <div className="space-y-3">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-24 w-full" />
+            ))}
+          </div>
+        )}
 
-      <div className="space-y-2">
-        {notifications.map((notif) => (
-          <button
-            key={notif.id}
-            onClick={() => handleOpen(notif)}
-            className={`w-full rounded-xl border p-4 text-left transition ${
-              notif.is_read ? "border-neutral-200 bg-white" : "border-primary/30 bg-primary/5"
-            }`}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <p className="font-semibold">
-                {TYPE_ICON[notif.type] ?? "ℹ️"} {notif.title}
-              </p>
-              {!notif.is_read && <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />}
-            </div>
-            <p className="mt-1 text-sm text-neutral-600">{notif.body}</p>
-            <p className="mt-1 text-xs text-neutral-400">{new Date(notif.created_at).toLocaleString()}</p>
-          </button>
-        ))}
+        {!loading && error && (
+          <div className="space-y-3">
+            <Alert>{t("notifications.loadFailed")}</Alert>
+            <Button variant="secondary" onClick={reload}>
+              {t("common.retry")}
+            </Button>
+          </div>
+        )}
 
-        {!loading && notifications.length === 0 && (
-          <p className="rounded-xl bg-neutral-50 p-6 text-center text-neutral-500">{t("notifications.empty")}</p>
+        {!loading && !error && items.length === 0 && <EmptyState title={t("notifications.empty")} />}
+
+        {!loading && !error && items.length > 0 && (
+          <ul className="space-y-3">
+            {items.map((n) => (
+              <li key={n.id}>
+                <Card padded={false} className={`p-4 ${n.is_read ? "" : "border-primary/50 bg-primary-50"}`}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {!n.is_read && (
+                      <span className="rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-paper-raised">{t("notifications.new")}</span>
+                    )}
+                    {KNOWN_TYPES.includes(n.type) && (
+                      <span className="rounded-full bg-chili-50 px-2.5 py-0.5 text-xs font-semibold text-chili-dark">
+                        {t(`notifications.type.${n.type}`)}
+                      </span>
+                    )}
+                  </div>
+                  <h2 className="mt-2 font-sans text-base font-semibold text-ink [overflow-wrap:anywhere]">{n.title}</h2>
+                  <p className="mt-1 text-ink [overflow-wrap:anywhere]">{n.body}</p>
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm text-ink-soft">{formatDateTime(n.created_at, language)}</p>
+                    {!n.is_read && (
+                      <Button variant="secondary" onClick={() => markRead(n.id)} disabled={pending !== null}>
+                        {t("notifications.markRead")}
+                      </Button>
+                    )}
+                  </div>
+                </Card>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
-    </main>
+    </div>
   );
 }

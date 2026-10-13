@@ -9,12 +9,12 @@ const OPTIONS: { code: Language; label: string; font: "" | "font-si" | "font-ta"
 ];
 
 export default function LanguageSwitcher() {
-  const { language, setLanguage } = useLanguage();
+  const { language, setLanguage, t } = useLanguage();
 
   return (
     <div
       role="group"
-      aria-label="Language"
+      aria-label={t("nav.language")}
       className="flex items-center gap-0.5 rounded-full border border-line bg-paper-raised p-0.5 text-xs"
     >
       {OPTIONS.map((opt) => (
@@ -23,8 +23,8 @@ export default function LanguageSwitcher() {
           type="button"
           lang={opt.code}
           onClick={() => setLanguage(opt.code)}
-          className={`rounded-full px-2.5 py-1.5 font-medium transition-colors ${opt.font} ${
-            language === opt.code ? "bg-primary text-paper" : "text-ink-soft hover:bg-primary-50 hover:text-primary"
+          className={`min-h-[2.5rem] min-w-[2.5rem] rounded-full px-2.5 font-medium transition-colors ${opt.font} ${
+            language === opt.code ? "bg-primary text-paper-raised" : "text-ink-soft hover:bg-primary-50 hover:text-primary"
           }`}
           aria-pressed={language === opt.code}
         >
