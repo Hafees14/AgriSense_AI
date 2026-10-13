@@ -73,25 +73,25 @@ export default function OfflineQueueBanner() {
   const failedItems = queue.filter((i) => i.status === "failed");
 
   return (
-    <div className="mb-4 space-y-2">
+    <div role="status" className="mb-4 space-y-2">
       {!isOnline && (
         <div className="flex items-center gap-2 rounded-lg border border-line bg-paper-raised p-3 text-sm text-ink-soft">
-          <span aria-hidden>📡</span>
+          <span aria-hidden="true" className="font-bold">i</span>
           {t("offline.noConnection")}
         </div>
       )}
 
       {pendingCount > 0 && (
-        <div className="flex items-center justify-between gap-3 rounded-lg bg-earth-50 p-3 text-sm text-earth-dark">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-earth/40 bg-earth-50 p-3 text-sm text-earth-dark">
           <span className="flex items-center gap-2">
-            <span aria-hidden>⏳</span>
+            <span aria-hidden="true" className="font-bold">○</span>
             {pendingCount} {pendingCount === 1 ? t("offline.oneQueued") : t("offline.manyQueued")}
           </span>
           {isOnline && (
             <button
               onClick={runSync}
               disabled={syncing}
-              className="shrink-0 rounded-full bg-earth px-3 py-1.5 text-xs font-semibold text-paper disabled:opacity-50"
+              className="min-h-[2.5rem] shrink-0 rounded-control bg-earth-dark px-4 text-sm font-semibold text-paper-raised disabled:opacity-55"
             >
               {syncing ? t("offline.syncing") : t("offline.syncNow")}
             </button>
@@ -102,22 +102,22 @@ export default function OfflineQueueBanner() {
       {failedItems.map((item) => (
         <div
           key={item.id}
-          className="flex items-center justify-between gap-3 rounded-lg bg-chili-50 p-3 text-sm text-chili-dark"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-chili/40 bg-chili-50 p-3 text-sm text-chili-dark"
         >
           <span className="flex items-center gap-2">
-            <span aria-hidden>⚠️</span>
-            {item.diagnosisType} — {item.lastError ?? t("offline.uploadFailed")}
+            <span aria-hidden="true" className="font-bold">!</span>
+            {["disease", "pest", "plant_id"].includes(item.diagnosisType) ? t(`diagnose.type.${item.diagnosisType}`) : item.diagnosisType} — {item.lastError ?? t("offline.uploadFailed")}
           </span>
           <div className="flex shrink-0 gap-2">
             <button
               onClick={() => retryFailedItem(item.id).then(runSync)}
-              className="rounded-full bg-chili px-3 py-1.5 text-xs font-semibold text-paper"
+              className="min-h-[2.5rem] rounded-control bg-chili px-4 text-sm font-semibold text-paper-raised"
             >
               {t("offline.retry")}
             </button>
             <button
               onClick={() => discardQueuedItem(item.id).then(refresh)}
-              className="rounded-full border border-chili/40 px-3 py-1.5 text-xs font-semibold text-chili-dark"
+              className="min-h-[2.5rem] rounded-control border border-chili/50 px-4 text-sm font-semibold text-chili-dark"
             >
               {t("offline.discard")}
             </button>

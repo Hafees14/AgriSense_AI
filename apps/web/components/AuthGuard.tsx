@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { useLanguage } from "@/lib/i18n";
 
 /**
  * Wrap any page's content with <AuthGuard> to keep logged-out farmers off
@@ -12,6 +13,7 @@ import { useAuth } from "@/lib/auth";
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
   const router = useRouter();
+  const { t } = useLanguage();
 
   useEffect(() => {
     if (isAuthenticated === false) {
@@ -21,8 +23,9 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (isAuthenticated === null) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center text-neutral-400">
-        Loading…
+      <div role="status" className="flex min-h-[50vh] items-center justify-center gap-3 text-ink-soft">
+        <span aria-hidden="true" className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        {t("common.loading")}
       </div>
     );
   }

@@ -82,7 +82,7 @@ export default function OutbreakMap({ centerLat, centerLon, radiusKm, hotspots }
         })}
       </MapContainer>
 
-      <ul className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-ink-soft" aria-label="Legend">
+      <ul className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-ink-soft" aria-label={t("outbreaks.legend")}>
         {[
           [MARKER_COLORS.center, t("outbreaks.legend.you")],
           [MARKER_COLORS.disease, t("outbreaks.legend.disease")],
