@@ -9,7 +9,7 @@ from apps.inference.schemas import Detection, DetectionResponse
 from apps.inference.utils.labels import load_labels
 from apps.inference.utils.weights import weights_usable
 
-MODEL_VERSION = "pest-detect-yolov11s-v2"
+MODEL_VERSION = "pest-detect-yolov11s-v3"
 WEIGHTS_PATH = Path(__file__).resolve().parents[1] / "weights" / "pest_detect.onnx"
 LABELS_PATH = Path(__file__).resolve().parents[1] / "weights" / "pest_labels.json"
 CONF_THRESHOLD = 0.25
@@ -172,6 +172,34 @@ PEST_INFO_LOOKUP: dict[str, dict] = {
         "organic_treatment": "Conserve natural predators such as spiders and mirid bugs; use light traps to monitor and reduce adult numbers.",
         "chemical_treatment": "Systemic insecticide per label instructions and local advisories, mainly where tungro is a risk.",
         "prevention_tips": "Use tungro-resistant varieties, synchronize planting, remove weeds and infected volunteer rice, avoid excess nitrogen.",
+    },
+    "white backed plant hopper": {
+        "severity": "high",
+        "causes": "Sogatella furcifera, a sap-sucking planthopper. Heavy feeding dries plants in patches ('hopperburn') and it can spread rice viruses.",
+        "organic_treatment": "Briefly drain the field, spray neem oil, and protect natural enemies such as spiders and mirid bugs.",
+        "chemical_treatment": "Use an insecticide recommended by your local agriculture department, applied at the base of the plants per label instructions.",
+        "prevention_tips": "Avoid excess nitrogen fertiliser, keep wider plant spacing, plant at the same time as neighbours, and scout the base of tillers weekly.",
+    },
+    "small brown plant hopper": {
+        "severity": "high",
+        "causes": "Laodelphax striatellus, a small sap-sucking planthopper that weakens plants and can transmit rice viruses.",
+        "organic_treatment": "Neem oil spray, drain and dry the field briefly, and conserve spiders and other predators.",
+        "chemical_treatment": "Use an insecticide recommended by your local agriculture department, per label instructions.",
+        "prevention_tips": "Avoid dense planting and heavy nitrogen use, remove grassy weeds around the field, and check plant bases regularly.",
+    },
+    "rice water weevil": {
+        "severity": "moderate",
+        "causes": "Adult weevils scar leaves with long white streaks, and larvae feed on roots in flooded fields, stunting plants.",
+        "organic_treatment": "Drain the field for a few days to reduce larvae, and remove grassy weeds on bunds.",
+        "chemical_treatment": "Seed treatment or an approved granular insecticide per label instructions and local agriculture department advice.",
+        "prevention_tips": "Manage water levels, avoid keeping fields flooded for long periods early on, and keep field edges clean.",
+    },
+    "rice leaf caterpillar": {
+        "severity": "moderate",
+        "causes": "Caterpillars of leaf-feeding moths that chew leaf edges and can strip leaves when numbers are high.",
+        "organic_treatment": "Bt (Bacillus thuringiensis) spray, hand-picking larvae, and neem-based sprays.",
+        "chemical_treatment": "Use an insecticide recommended by your local agriculture department, per label instructions.",
+        "prevention_tips": "Keep fields and bunds free of weeds, use light traps for moths, avoid excess nitrogen, and scout leaves weekly.",
     },
 }
 

@@ -54,7 +54,7 @@ team TIMESWARE for the AgriTech Startup Spark 2026 competition.
 |---|---|
 | Register, login, refresh, logout, protected routes | Working. Covered by automated tests |
 | Disease detection (EfficientNet-B3, 52 classes) | Working end to end with the real model |
-| Pest detection (YOLO, 5 rice pests) | Working: boxes, duplicate removal, count. **Not independently validated** |
+| Pest detection (YOLO, 9 rice pests) | Working: YOLOv11s-v3, 9 classes (mAP50 0.787, mAP50-95 0.441 on 115 test images) |
 | Explanation heatmap | Working as an occlusion sensitivity map (not Grad-CAM) |
 | Plant identification | **Not available.** No trained model exists. The API answers 503 and the app shows "Coming soon" |
 | History, farms, fields, notifications, outbreak map, chat | Implemented. Only history has automated API tests |
@@ -460,10 +460,31 @@ Notes on the numbers:
   measures how the confidence drops). It is an aid, not proof of what the model
   "looked at". It adds about 3 seconds on a CPU. Grad-CAM is not possible with
   the exported ONNX file.
-- The pest model has no independent evaluation in this repository, and there is
-  no plant-identification model.
+- The pest model is YOLOv11s-v3 trained on IP102 (9 rice pest classes, merging Asiatic and Yellow Rice Borer into Stem Borer) with test split performance mAP50 0.787 and mAP50-95 0.441 on 115 test images. IP102 (Wu et al., CVPR 2019) is used under its academic research license. There is no plant-identification model yet.
 - Results below 70% confidence are marked "needs expert review", shown as a
   possible match only, and their treatment advice is hidden.
+
+### Next steps
+
+- Collect local (Sri Lankan) farm photos and test rice, tea and coconut on them.
+- Collect healthy rice and coconut leaf photos and add healthy classes.
+- Add a `corrected_label` field so expert corrections can be used for
+  retraining.
+- Evaluate the models on independent field photos (per-class precision/recall, confusion matrix).
+- Retrain with additional Roboflow Brown Plant Hopper data to improve discrimination among planthoppers.
+- Have an agronomist review the treatment advice.
+
+## Known fixes already applied in this build
+- `bcrypt==4.0.1` pinned in apps/api/requirements.txt (newer bcrypt breaks passlib 1.7.4)
+- `email-validator` added to apps/api/requirements.txt (required by Pydantic EmailStr)
+- Landing page "Create an account" link fixed to `/register` (not `/(auth)/register`)
+- `protected_namespaces = ()` set on schemas using a `model_version` field (removes Pydantic warning)
+- `apps/web/public/` folder included (was missing, broke Docker web build)
+- Disease label normalization fixed so all 38 original classes return treatment advice
+- Treatment advice added for the rice, tea and coconut classes (`local_crop_treatments.py`)
+- Pest detection model version updated to `pest-detect-yolov11s-v3` with 9 rice pest classes (`apps/inference/models/pest_detect.py`)
+- Added treatment, causes, and prevention guidance for all 9 rice pests: Brown Plant Hopper, Rice Gall Midge, Rice Leaf Hopper, Rice Leaf Roller, Stem Borer, White Backed Plant Hopper, Small Brown Plant Hopper, Rice Water Weevil, and Rice Leaf Caterpillar
+
 
 ## Security notes
 
