@@ -4,6 +4,8 @@ import { useCallback, useMemo, useState } from "react";
 import { MapContainer, Marker, TileLayer, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import type { LocationSource } from "@/lib/api-client";
+import { useLanguage } from "@/lib/i18n";
+import Button from "@/components/ui/Button";
 
 // Leaflet's default marker icon references image files by a relative path
 // that breaks under bundlers unless re-pointed at CDN-hosted copies — a
@@ -39,6 +41,7 @@ function ClickToPlace({ onPlace }: { onPlace: (lat: number, lng: number) => void
 }
 
 export default function FarmLocationPicker({ value, onChange }: Props) {
+  const { t } = useLanguage();
   const [geoError, setGeoError] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
 
@@ -60,7 +63,7 @@ export default function FarmLocationPicker({ value, onChange }: Props) {
 
   function useMyLocation() {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setGeoError("Geolocation isn't available in this browser.");
+      setGeoError(t("picker.noGeo"));
       return;
     }
     setLocating(true);
@@ -70,11 +73,7 @@ export default function FarmLocationPicker({ value, onChange }: Props) {
         setLocating(false);
       },
       (err) => {
-        setGeoError(
-          err.code === err.PERMISSION_DENIED
-            ? "Location permission was denied — place the pin manually instead."
-            : "Couldn't get your location. Place the pin manually instead."
-        );
+        setGeoError(err.code === err.PERMISSION_DENIED ? t("picker.denied") : t("picker.failed"));
         setLocating(false);
       },
       { enableHighAccuracy: true, timeout: 10_000 }
@@ -83,7 +82,7 @@ export default function FarmLocationPicker({ value, onChange }: Props) {
 
   return (
     <div className="space-y-2">
-      <div className="overflow-hidden rounded-lg border border-line">
+      <div role="region" aria-label={t("picker.mapLabel")} className="overflow-hidden rounded-card border border-line">
         <MapContainer center={center} zoom={value.latitude != null ? 14 : 7} style={{ height: 260, width: "100%" }}>
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -108,26 +107,29 @@ export default function FarmLocationPicker({ value, onChange }: Props) {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <button
-          type="button"
-          onClick={useMyLocation}
-          disabled={locating}
-          className="rounded-full border border-line px-3 py-1.5 font-medium text-ink-soft hover:border-primary hover:text-primary disabled:opacity-50"
-        >
-          {locating ? "Locating…" : "📍 Use my location"}
-        </button>
+        <Button variant="secondary" onClick={useMyLocation} loading={locating}>
+          {locating ? t("picker.locating") : t("picker.useMyLocation")}
+        </Button>
         {value.source && (
-          <span className="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-dark">
-            {value.source === "gps" ? "From device GPS" : value.source === "geocoded" ? "Approximate (from address)" : "Manually placed"}
+          <span className="rounded-full bg-primary-50 px-3 py-1 text-sm font-medium text-primary-dark">
+            {value.source === "gps" ? t("picker.src.gps") : value.source === "geocoded" ? t("picker.src.geocoded") : t("picker.src.manual")}
           </span>
         )}
       </div>
-      {geoError && <p className="text-sm text-chili">{geoError}</p>}
+      {geoError && (
+        <p role="alert" className="text-sm font-medium text-chili-dark">
+          {geoError}
+        </p>
+      )}
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="mb-1 block text-xs font-medium text-ink-soft">Latitude</label>
+          <label htmlFor="farm-lat" className="mb-1.5 block text-sm font-medium text-ink">
+            {t("picker.latitude")}
+          </label>
           <input
+            id="farm-lat"
+            name="latitude"
             type="number"
             step="any"
             min={-90}
@@ -137,12 +139,16 @@ export default function FarmLocationPicker({ value, onChange }: Props) {
               const lat = e.target.value === "" ? null : Number(e.target.value);
               onChange({ ...value, latitude: lat, source: "manual" });
             }}
-            className="w-full rounded border border-line bg-paper-raised px-2.5 py-1.5 text-sm"
+            className="control"
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-ink-soft">Longitude</label>
+          <label htmlFor="farm-lng" className="mb-1.5 block text-sm font-medium text-ink">
+            {t("picker.longitude")}
+          </label>
           <input
+            id="farm-lng"
+            name="longitude"
             type="number"
             step="any"
             min={-180}
@@ -152,11 +158,11 @@ export default function FarmLocationPicker({ value, onChange }: Props) {
               const lng = e.target.value === "" ? null : Number(e.target.value);
               onChange({ ...value, longitude: lng, source: "manual" });
             }}
-            className="w-full rounded border border-line bg-paper-raised px-2.5 py-1.5 text-sm"
+            className="control"
           />
         </div>
       </div>
-      <p className="text-xs text-ink-soft">Click the map, drag the pin, type coordinates directly, or use your device's GPS.</p>
+      <p className="text-sm text-ink-soft">{t("picker.help")}</p>
     </div>
   );
 }

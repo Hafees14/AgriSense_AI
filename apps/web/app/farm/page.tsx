@@ -1,19 +1,29 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api, type Farm, type LocationSource } from "@/lib/api-client";
 import AuthGuard from "@/components/AuthGuard";
 import { compressImage } from "@/lib/imageCompression";
+import { useLanguage } from "@/lib/i18n";
+import { formatDate } from "@/lib/format";
+import { useLoad } from "@/lib/useLoad";
 import type { LocationValue } from "@/components/FarmLocationPicker";
+import Alert from "@/components/ui/Alert";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
+import EmptyState from "@/components/ui/EmptyState";
+import Field from "@/components/ui/Field";
+import Skeleton from "@/components/ui/Skeleton";
+import { useToast } from "@/components/ui/Toast";
 
 // Leaflet touches window/document at import time, so it can never be
 // server-rendered — same pattern as the outbreak map.
 const FarmLocationPicker = dynamic(() => import("@/components/FarmLocationPicker"), {
   ssr: false,
-  loading: () => <div className="h-[260px] animate-pulse rounded-lg bg-paper-raised" />,
+  loading: () => <Skeleton className="h-[260px] w-full" />,
 });
 
 export default function FarmPage() {
@@ -34,52 +44,50 @@ interface FormState {
 }
 
 const EMPTY_FORM: FormState = { name: "", region: "", address: "", land_size_ha: "", farm_type: "", main_crops: "" };
+const EMPTY_LOCATION: LocationValue = { latitude: null, longitude: null, source: null };
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+type Errors = { name?: string; land_size_ha?: string; location?: string };
 
 function FarmView() {
+  const { t, language } = useLanguage();
+  const toast = useToast();
   const searchParams = useSearchParams();
   const router = useRouter();
   const farmId = searchParams.get("id");
 
-  const [farms, setFarms] = useState<Farm[]>([]);
-  const [loadingList, setLoadingList] = useState(true);
-  const [listError, setListError] = useState<string | null>(null);
-
+  const farms = useLoad(() => api.farms.list());
   const [current, setCurrent] = useState<Farm | null>(null);
   const [loadingCurrent, setLoadingCurrent] = useState(!!farmId);
+  const [loadError, setLoadError] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
-  const [location, setLocation] = useState<LocationValue>({ latitude: null, longitude: null, source: null });
+  const [location, setLocation] = useState<LocationValue>(EMPTY_LOCATION);
+  const [errors, setErrors] = useState<Errors>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [imageUploading, setImageUploading] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const loadFarms = useCallback(() => {
-    setLoadingList(true);
-    setListError(null);
-    api.farms
-      .list()
-      .then(setFarms)
-      .catch((err) => setListError(err instanceof Error ? err.message : "Couldn't load your farms."))
-      .finally(() => setLoadingList(false));
-  }, []);
+  const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
-    loadFarms();
-  }, [loadFarms]);
-
-  useEffect(() => {
+    setErrors({});
+    setError(null);
+    setLoadError(false);
     if (!farmId) {
       setCurrent(null);
       setForm(EMPTY_FORM);
-      setLocation({ latitude: null, longitude: null, source: null });
+      setLocation(EMPTY_LOCATION);
+      setLoadingCurrent(false);
       return;
     }
+    let cancelled = false;
     setLoadingCurrent(true);
-    setError(null);
     api.farms
       .get(farmId)
       .then((farm) => {
+        if (cancelled) return;
         setCurrent(farm);
         setForm({
           name: farm.name,
@@ -95,16 +103,46 @@ function FarmView() {
           source: (farm.location_source as LocationSource | undefined) ?? null,
         });
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load this farm."))
-      .finally(() => setLoadingCurrent(false));
+      .catch(() => !cancelled && setLoadError(true))
+      .finally(() => !cancelled && setLoadingCurrent(false));
+    return () => {
+      cancelled = true;
+    };
   }, [farmId]);
+
+  const set = (key: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [key]: e.target.value });
+
+  function validate(): Errors {
+    const e: Errors = {};
+    if (!form.name.trim()) e.name = t("farm.err.name");
+    if (form.land_size_ha && Number(form.land_size_ha) < 0) e.land_size_ha = t("farm.err.size");
+    const { latitude: lat, longitude: lng } = location;
+    if ((lat != null && (lat < -90 || lat > 90)) || (lng != null && (lng < -180 || lng > 180))) e.location = t("farm.err.coords");
+    return e;
+  }
+
+  function apiMessage(err: unknown, fallbackKey: string) {
+    if (err instanceof TypeError) return t("error.network");
+    const msg = err instanceof Error ? err.message : "";
+    if (!msg || msg.includes("[object Object]") || msg.startsWith("Request failed with status")) return t(fallbackKey);
+    return msg;
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setSaving(true);
+    if (saving) return;
     setError(null);
+    const found = validate();
+    setErrors(found);
+    if (found.name || found.land_size_ha) {
+      const first = found.name ? "name" : "land_size_ha";
+      (formRef.current?.elements.namedItem(first) as HTMLElement | null)?.focus();
+      return;
+    }
+    if (found.location) return;
+    setSaving(true);
     const payload = {
-      name: form.name,
+      name: form.name.trim(),
       region: form.region || undefined,
       address: form.address || undefined,
       land_size_ha: form.land_size_ha ? Number(form.land_size_ha) : undefined,
@@ -118,15 +156,17 @@ function FarmView() {
       if (farmId) {
         const updated = await api.farms.update(farmId, payload);
         setCurrent(updated);
+        toast(t("farm.saved"), "success");
+        farms.reload();
       } else {
         const created = await api.farms.create(payload);
-        loadFarms();
+        toast(t("farm.saved"), "success");
+        farms.reload();
         router.push(`/farm?id=${created.id}`);
         return;
       }
-      loadFarms();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't save your farm. Please try again.");
+      setError(apiMessage(err, "farm.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -137,12 +177,12 @@ function FarmView() {
     e.target.value = "";
     if (!file || !farmId) return;
 
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      setImageError("Please choose a JPEG, PNG, or WEBP image.");
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      setImageError(t("error.unsupportedType"));
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      setImageError("Image is too large — please choose one under 10MB.");
+    if (file.size > MAX_IMAGE_BYTES) {
+      setImageError(t("error.tooLarge"));
       return;
     }
 
@@ -152,205 +192,175 @@ function FarmView() {
       const compressed = await compressImage(file);
       const updated = await api.farms.uploadImage(farmId, compressed);
       setCurrent(updated);
-      loadFarms();
+      toast(t("farm.photoUpdated"), "success");
+      farms.reload();
     } catch (err) {
-      setImageError(err instanceof Error ? err.message : "Couldn't upload the photo. Please try again.");
+      setImageError(apiMessage(err, "farm.photoFailed"));
     } finally {
       setImageUploading(false);
     }
   }
 
+  const summaryRows: [string, string][] = current
+    ? [
+        [t("farm.type"), current.farm_type || "—"],
+        [t("farm.crops"), current.main_crops || "—"],
+        [
+          t("farm.location"),
+          current.latitude != null && current.longitude != null ? `${current.latitude.toFixed(5)}, ${current.longitude.toFixed(5)}` : t("farm.notSet"),
+        ],
+        [t("farm.lastUpdated"), formatDate(current.updated_at, language)],
+      ]
+    : [];
+
   return (
-    <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <h1 className="font-display text-2xl font-semibold text-ink">{farmId ? "Edit farm" : "Add a farm"}</h1>
+    <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:py-12">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <h1 className="text-2xl font-semibold text-primary-dark sm:text-3xl">{farmId ? t("farm.titleEdit") : t("dashboard.addFarm")}</h1>
         {farmId && (
-          <Link href="/farm" className="text-sm font-medium text-primary hover:underline">
-            + Add another farm
+          <Link href="/farm" className="inline-flex min-h-touch items-center rounded-control px-2 font-medium text-primary-dark underline underline-offset-2 hover:text-primary">
+            {t("farm.addAnother")}
           </Link>
         )}
       </div>
 
       {loadingCurrent ? (
-        <div className="h-64 animate-pulse rounded-lg bg-paper-raised" />
+        <Skeleton className="h-64 w-full" />
+      ) : loadError ? (
+        <Alert>{t("farm.loadFailed")}</Alert>
       ) : (
         <div className="grid gap-8 sm:grid-cols-[1fr,1.1fr]">
-          {/* Structured summary card — shown once a farm exists */}
           {current && (
             <div className="order-2 space-y-4 sm:order-1">
-              <div className="overflow-hidden rounded-lg border border-line bg-paper-raised">
+              <Card padded={false} className="overflow-hidden">
                 {current.image_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={current.image_url} alt={current.name} className="h-40 w-full object-cover" />
                 ) : (
-                  <div className="flex h-40 w-full items-center justify-center text-ink-soft">
-                    <span aria-hidden className="text-3xl">
-                      🌾
-                    </span>
+                  <div aria-hidden="true" className="flex h-40 w-full items-center justify-center bg-primary-50 text-4xl font-semibold text-primary-dark">
+                    {current.name.trim().charAt(0).toUpperCase()}
                   </div>
                 )}
                 <div className="p-4">
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={imageUploading}
-                    className="text-sm font-medium text-primary hover:underline disabled:opacity-50"
-                  >
-                    {imageUploading ? "Uploading…" : current.image_url ? "Change photo" : "Add a photo"}
-                  </button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={handleImageChange}
-                    className="hidden"
-                  />
-                  {imageError && <p className="mt-1 text-sm text-chili">{imageError}</p>}
+                  <Button variant="secondary" onClick={() => fileInputRef.current?.click()} loading={imageUploading}>
+                    {imageUploading ? t("farm.uploading") : current.image_url ? t("farm.changePhoto") : t("farm.addPhoto")}
+                  </Button>
+                  <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleImageChange} className="hidden" aria-hidden="true" tabIndex={-1} />
+                  {imageError && (
+                    <p role="alert" className="mt-2 text-sm font-medium text-chili-dark">
+                      {imageError}
+                    </p>
+                  )}
                 </div>
-              </div>
+              </Card>
 
-              <dl className="space-y-2 rounded-lg border border-line bg-paper-raised p-4 text-sm">
-                <div className="flex justify-between gap-4">
-                  <dt className="text-ink-soft">Farm type</dt>
-                  <dd className="text-right font-medium">{current.farm_type || "—"}</dd>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <dt className="text-ink-soft">Main crops</dt>
-                  <dd className="text-right font-medium">{current.main_crops || "—"}</dd>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <dt className="text-ink-soft">Location</dt>
-                  <dd className="text-right font-medium">
-                    {current.latitude != null && current.longitude != null
-                      ? `${current.latitude.toFixed(5)}, ${current.longitude.toFixed(5)}`
-                      : "Not set"}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <dt className="text-ink-soft">Last updated</dt>
-                  <dd className="text-right font-medium">{new Date(current.updated_at).toLocaleDateString()}</dd>
-                </div>
-              </dl>
+              <Card as="section" padded={false} className="p-4">
+                <dl className="space-y-3 text-[0.95rem]">
+                  {summaryRows.map(([label, value]) => (
+                    <div key={label} className="flex justify-between gap-4">
+                      <dt className="text-ink-soft">{label}</dt>
+                      <dd className="text-right font-medium text-ink [overflow-wrap:anywhere]">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </Card>
             </div>
           )}
 
-          {/* Editable form */}
-          <form onSubmit={handleSubmit} className="order-1 space-y-4 sm:order-2">
-            {error && <p className="rounded-lg bg-chili-50 p-3 text-sm text-chili-dark">{error}</p>}
+          <form ref={formRef} onSubmit={handleSubmit} noValidate className="order-1 space-y-5 sm:order-2">
+            {error && <Alert>{error}</Alert>}
 
-            <div>
-              <label className="mb-1 block text-sm font-medium text-ink-soft">Farm name</label>
-              <input
-                placeholder="e.g. Kandy home garden"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="w-full rounded-lg border border-line bg-paper-raised px-4 py-2.5"
-                required
+            <Field name="name" label={t("farm.name")} placeholder={t("farm.namePh")} value={form.name} onChange={set("name")} error={errors.name} required autoComplete="off" />
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <Field name="farm_type" label={t("farm.type")} placeholder={t("farm.typePh")} value={form.farm_type} onChange={set("farm_type")} />
+              <Field
+                name="land_size_ha"
+                type="number"
+                step="any"
+                min={0}
+                inputMode="decimal"
+                label={t("farm.size")}
+                placeholder={t("farm.sizePh")}
+                value={form.land_size_ha}
+                onChange={set("land_size_ha")}
+                error={errors.land_size_ha}
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink-soft">Farm type</label>
-                <input
-                  placeholder="e.g. Paddy, home garden"
-                  value={form.farm_type}
-                  onChange={(e) => setForm({ ...form, farm_type: e.target.value })}
-                  className="w-full rounded-lg border border-line bg-paper-raised px-4 py-2.5"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink-soft">Land size (ha)</label>
-                <input
-                  type="number"
-                  step="any"
-                  min={0}
-                  placeholder="e.g. 0.5"
-                  value={form.land_size_ha}
-                  onChange={(e) => setForm({ ...form, land_size_ha: e.target.value })}
-                  className="w-full rounded-lg border border-line bg-paper-raised px-4 py-2.5"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-ink-soft">Main crops</label>
-              <input
-                placeholder="e.g. Rice, tomato, chilli"
-                value={form.main_crops}
-                onChange={(e) => setForm({ ...form, main_crops: e.target.value })}
-                className="w-full rounded-lg border border-line bg-paper-raised px-4 py-2.5"
+            <Field name="main_crops" label={t("farm.crops")} placeholder={t("farm.cropsPh")} value={form.main_crops} onChange={set("main_crops")} />
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <Field name="region" label={t("farm.region")} placeholder={t("farm.regionPh")} value={form.region} onChange={set("region")} />
+              <Field
+                name="address"
+                label={`${t("farm.address")} ${t("register.optional")}`}
+                placeholder={t("farm.addressPh")}
+                value={form.address}
+                onChange={set("address")}
+                autoComplete="street-address"
               />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink-soft">Region / district</label>
-                <input
-                  placeholder="e.g. Central Province"
-                  value={form.region}
-                  onChange={(e) => setForm({ ...form, region: e.target.value })}
-                  className="w-full rounded-lg border border-line bg-paper-raised px-4 py-2.5"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink-soft">Address (optional)</label>
-                <input
-                  placeholder="Street / village"
-                  value={form.address}
-                  onChange={(e) => setForm({ ...form, address: e.target.value })}
-                  className="w-full rounded-lg border border-line bg-paper-raised px-4 py-2.5"
-                />
-              </div>
             </div>
 
             <div>
-              <label className="mb-1 block text-sm font-medium text-ink-soft">Exact location</label>
+              <p className="mb-1.5 text-sm font-medium text-ink">{t("farm.location")}</p>
               <FarmLocationPicker value={location} onChange={setLocation} />
+              {errors.location && (
+                <p role="alert" className="mt-2 text-sm font-medium text-chili-dark">
+                  {errors.location}
+                </p>
+              )}
             </div>
 
-            <button
-              type="submit"
-              disabled={saving}
-              className="w-full rounded-lg bg-primary py-3 text-base font-semibold text-paper disabled:opacity-50"
-            >
-              {saving ? "Saving…" : farmId ? "Save changes" : "Save farm"}
-            </button>
+            <Button type="submit" size="lg" loading={saving} className="w-full">
+              {saving ? t("farm.saving") : farmId ? t("farm.save") : t("farm.create")}
+            </Button>
           </form>
         </div>
       )}
 
-      <div className="mt-12">
-        <h2 className="mb-3 font-display text-lg font-semibold text-ink">Your farms</h2>
-        {loadingList && <p className="text-sm text-ink-soft">Loading…</p>}
-        {listError && <p className="text-sm text-chili">{listError}</p>}
-        {!loadingList && !listError && farms.length === 0 && (
-          <p className="text-sm text-ink-soft">No farms yet — add your first one above.</p>
+      <section className="mt-12" aria-labelledby="your-farms">
+        <h2 id="your-farms" className="mb-3 text-xl font-semibold text-ink">
+          {t("dashboard.farms")}
+        </h2>
+        {farms.loading && <Skeleton className="h-16 w-full" />}
+        {!farms.loading && farms.error && (
+          <div className="space-y-3">
+            <Alert>{t("dashboard.loadFarmsFailed")}</Alert>
+            <Button variant="secondary" onClick={farms.reload}>
+              {t("common.retry")}
+            </Button>
+          </div>
         )}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {farms.map((farm) => (
-            <Link
-              key={farm.id}
-              href={`/farm?id=${farm.id}`}
-              className={`flex items-center gap-3 rounded-lg border p-3 hover:border-primary ${
-                farm.id === farmId ? "border-primary bg-primary-50" : "border-line bg-paper-raised"
-              }`}
-            >
-              <div className="h-12 w-12 shrink-0 overflow-hidden rounded bg-paper">
-                {farm.image_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={farm.image_url} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-ink-soft" aria-hidden>
-                    🌾
+        {!farms.loading && !farms.error && (farms.data ?? []).length === 0 && <EmptyState title={t("farm.listEmpty")} />}
+        {!farms.loading && !farms.error && (farms.data ?? []).length > 0 && (
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {(farms.data ?? []).map((farm) => (
+              <li key={farm.id}>
+                <Link
+                  href={`/farm?id=${farm.id}`}
+                  aria-current={farm.id === farmId ? "page" : undefined}
+                  className={`flex min-h-touch items-center gap-3 rounded-card border p-3 transition-colors hover:border-primary ${
+                    farm.id === farmId ? "border-primary bg-primary-50" : "border-line bg-paper-raised"
+                  }`}
+                >
+                  <div className="h-12 w-12 shrink-0 overflow-hidden rounded-control bg-primary-50">
+                    {farm.image_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={farm.image_url} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <div aria-hidden="true" className="flex h-full w-full items-center justify-center font-semibold text-primary-dark">
+                        {farm.name.trim().charAt(0).toUpperCase()}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-              <div className="min-w-0">
-                <p className="truncate font-medium text-ink">{farm.name}</p>
-                <p className="truncate text-xs text-ink-soft">{farm.region || farm.farm_type || "No details yet"}</p>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </div>
-    </main>
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-ink">{farm.name}</p>
+                    <p className="truncate text-sm text-ink-soft">{farm.region || farm.farm_type || t("dashboard.noDetails")}</p>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
   );
 }
