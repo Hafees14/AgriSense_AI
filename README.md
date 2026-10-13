@@ -35,8 +35,8 @@ team TIMESWARE for the AgriTech Startup Spark 2026 competition.
 
 - **Disease detection:** upload a leaf photo, get a disease name, a confidence
   score, severity, causes, organic and chemical treatment, and prevention tips.
-- **Pest detection:** the same for five common rice pests, with boxes around
-  the pests that were found.
+- **Pest detection:** detection, bounding boxes, counts, causes, organic/chemical
+  treatment, and prevention tips for nine common rice pests.
 - **Explanation heatmap:** a picture that shows which parts of the leaf
   affected the result most.
 - **Expert review:** low-confidence results go to a queue for agriculture
@@ -279,14 +279,21 @@ rejects stub results with a 503, so a fake result is never shown or saved.
 | Task | Model | Status |
 |---|---|---|
 | Disease detection | EfficientNet-B3, 52 classes (17 crops), 300×300 input | Trained: `disease-detect-efficientnet-b3-v3` |
-| Pest detection | YOLO (Ultralytics export), 5 rice pests, 640×640 input | Weights present: `pest-detect-yolov11s-v2`. Not independently validated |
+| Pest detection | YOLOv11s-v3 (Ultralytics ONNX export), 9 rice pests, 640×640 input | Trained: `pest-detect-yolov11s-v3` (mAP50 0.787, mAP50-95 0.441 on 115 test images) |
 | Plant identification | EfficientNet-B3 | No trained model. The feature is turned off |
 
-**Pest classes:** Brown Plant Hopper, Rice Gall Midge, Rice Leaf Hopper, Rice
-Leaf Roller, Stem Borer. The pest wrapper keeps the aspect ratio (letterbox),
-removes duplicate boxes (non-max suppression: confidence 0.25, overlap 0.45),
-and returns every box it finds. The stored diagnosis keeps the top label and
-confidence.
+**Supported 9 rice pest classes:**
+1. **Brown Plant Hopper** (*Nilaparvata lugens*)
+2. **Rice Gall Midge** (*Orseolia oryzae*)
+3. **Rice Leaf Hopper** (*Nephotettix virescens*)
+4. **Rice Leaf Roller** (*Cnaphalocrocis medinalis*)
+5. **Stem Borer** (*Scirpophaga incertulas / Chilo suppressalis*)
+6. **White Backed Plant Hopper** (*Sogatella furcifera*)
+7. **Small Brown Plant Hopper** (*Laodelphax striatellus*)
+8. **Rice Water Weevil** (*Lissorhoptrus oryzophilus*)
+9. **Rice Leaf Caterpillar** (*Naranga aenescens*)
+
+All 9 pests feature bounding box detection with letterbox preprocessing, duplicate suppression (non-max suppression: confidence 0.25, overlap 0.45), pest counts, and comprehensive advisory entries (causes, organic & chemical management, and prevention). The stored diagnosis records the primary pest detection, bounding boxes, and confidence.
 
 **Heatmap:** for disease results with at least 50% confidence the service hides
 parts of the leaf one at a time and measures how much the confidence drops.
@@ -524,7 +531,9 @@ Notes on the numbers:
   the models were trained on. Lab-photo accuracy is high and field-photo
   accuracy is much lower. Rice, tea and coconut have not been tested on
   independent Sri Lankan farm photos.
-- **Pest detection has no independent evaluation.**
+- **Pest detection evaluated on held-out test split only.** The mAP50 0.787 score is
+  on the IP102 test split (115 images); it has not yet been benchmarked on independent
+  Sri Lankan farm photos.
 - **Plant identification does not exist yet.**
 - **Treatment advice is a draft.** It has not been reviewed by an agronomist.
 - The disease model only knows its 52 classes. Other crops are forced into the
