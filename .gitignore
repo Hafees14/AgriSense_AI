@@ -20,3 +20,6 @@ apps/inference/weights_backup/
 *.db
 *.sqlite3
 *.tsbuildinfo
+
+# Local MySQL database backup
+infra_mysql_data_backup.tar.gz
