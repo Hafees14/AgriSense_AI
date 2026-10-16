@@ -190,7 +190,7 @@ python -m venv .venv
 pip install -r apps/api/requirements.txt
 alembic -c apps/api/alembic.ini upgrade head
 python -m apps.api.db.seed
-uvicorn apps.api.main:app --reload --reload-exclude ".venv/*"
+uvicorn apps.api.main:app --reload --reload-dir apps
 ```
 
 Check: <http://localhost:8000/docs>
@@ -199,7 +199,7 @@ Check: <http://localhost:8000/docs>
 
 ```
 pip install -r apps/inference/requirements.txt
-uvicorn apps.inference.main:app --reload --reload-exclude ".venv/*" --port 8001
+uvicorn apps.inference.main:app --reload --reload-dir apps --port 8001
 ```
 
 Check: <http://localhost:8001/health>
