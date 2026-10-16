@@ -1,5 +1,6 @@
 import logging
 from functools import lru_cache
+from pathlib import Path
 from urllib.parse import quote_plus
 
 from pydantic import model_validator
@@ -9,10 +10,21 @@ logger = logging.getLogger("agrisense.config")
 
 DEFAULT_SECRET_KEY = "change-me-in-production"
 
+# apps/api/.env, found from this file's location so it loads no matter which
+# folder you start uvicorn from. A ".env" in the current folder is read too;
+# values in apps/api/.env win.
+API_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
-
+    model_config = SettingsConfigDict(
+        env_file=(
+            str(Path(__file__).resolve().parents[1] / ".env"),
+            ".env",
+        ),
+        extra="ignore",
+    )
+    
     APP_NAME: str = "AgriSense AI API"
     ENV: str = "development"
     # DEBUG turns on SQL echo logging. Keep it off unless you are debugging.
@@ -46,6 +58,17 @@ class Settings(BaseSettings):
     WEATHER_API_KEY: str = ""
     WEATHER_API_BASE_URL: str = "https://api.open-meteo.com/v1"
     LLM_API_KEY: str = ""
+
+    # Gemini assistant (POST /assistant/chat). Get a free key at
+    # https://aistudio.google.com/apikey. Empty = assistant switched off (503).
+    GEMINI_API_KEY: str = ""
+    # Check AI Studio for the free models available to your key.
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+    # Messages per user per day.
+    ASSISTANT_DAILY_LIMIT: int = 30
+    # Messages per day for all users together. Keep this below your key's real
+    # daily quota, because the free quota is shared by every user of one key.
+    ASSISTANT_GLOBAL_DAILY_LIMIT: int = 900
 
     # Anyone can self-register as "farmer" freely, but "officer"/"researcher"
     # accounts can review other farmers' diagnoses (see require_role in
@@ -92,6 +115,10 @@ class Settings(BaseSettings):
                     "SECRET_KEY is missing, default or shorter than 32 characters. "
                     "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
                 )
+
+        # 3. Assistant limits must not be negative.
+        self.ASSISTANT_DAILY_LIMIT = max(0, self.ASSISTANT_DAILY_LIMIT)
+        self.ASSISTANT_GLOBAL_DAILY_LIMIT = max(0, self.ASSISTANT_GLOBAL_DAILY_LIMIT)
         return self
 
 

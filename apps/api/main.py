@@ -8,7 +8,19 @@ from fastapi.staticfiles import StaticFiles
 from httpx import HTTPStatusError, RequestError
 
 from apps.api.core.config import settings
-from apps.api.routers import auth, chat, contact, diagnoses, farms, notifications, outbreaks, recommendations, reviews, weather
+from apps.api.routers import (
+    assistant,
+    auth,
+    chat,
+    contact,
+    diagnoses,
+    farms,
+    notifications,
+    outbreaks,
+    recommendations,
+    reviews,
+    weather,
+)
 
 logger = logging.getLogger("agrisense.api")
 
@@ -68,6 +80,7 @@ app.include_router(auth.router)
 app.include_router(farms.router)
 app.include_router(diagnoses.router)
 app.include_router(chat.router)
+app.include_router(assistant.router)  # Gemini assistant: POST /assistant/chat
 app.include_router(weather.router)
 app.include_router(recommendations.router)
 app.include_router(notifications.router)
